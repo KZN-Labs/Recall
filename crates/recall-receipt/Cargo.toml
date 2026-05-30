@@ -1,0 +1,19 @@
+[package]
+name = "recall-receipt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+recall-core = { path = "../recall-core" }
+recall-crypto = { path = "../recall-crypto" }
+recall-proto = { path = "../recall-proto" }
+prost = { workspace = true }
+prost-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+hex = { workspace = true }
+sha2 = { workspace = true }

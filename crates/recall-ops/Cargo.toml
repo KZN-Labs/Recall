@@ -1,0 +1,31 @@
+[package]
+name = "recall-ops"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "recall"
+path = "src/main.rs"
+
+[dependencies]
+recall-core   = { path = "../recall-core" }
+recall-proto  = { path = "../recall-proto" }
+recall-crypto = { path = "../recall-crypto" }
+tokio         = { workspace = true }
+tonic         = { workspace = true }
+clap          = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+anyhow        = { workspace = true }
+tracing       = { workspace = true }
+tracing-subscriber = { workspace = true }
+hex           = { workspace = true }
+chrono        = { workspace = true }
+reqwest       = { workspace = true }
+# Terminal output
+colored       = "2"
+# Interactive prompts
+dialoguer     = "0.11"
+# PDF generation
+printpdf      = "0.7"

@@ -1,0 +1,17 @@
+[package]
+name = "recall-conflict"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+recall-core = { path = "../recall-core" }
+recall-crypto = { path = "../recall-crypto" }
+recall-proto = { path = "../recall-proto" }
+recall-memory = { path = "../recall-memory" }
+prost = { workspace = true }
+prost-types = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }

@@ -1,0 +1,63 @@
+syntax = "proto3";
+package recall.passport.v1;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+option go_package = "github.com/KZN-Labs/Recall-/gen/go/recall/passport/v1;passportv1";
+
+// Cryptographic agent identity. Agent self-generates, operator admits/rejects.
+message Passport {
+  // Stable UUID v7. Survives key rotations.
+  recall.common.v1.AgentId agent_id = 1;
+  // Ed25519 public key (32 bytes)
+  bytes agent_public_key = 2;
+  recall.common.v1.WorkspaceId workspace_id = 3;
+  int32 trust_level = 4;
+  recall.common.v1.AgentRole role = 5;
+  string model_provider = 6;
+  string model_name = 7;
+  // Required for open workspaces (sybil mitigation). Optional for closed.
+  google.protobuf.Timestamp expires_at = 8;
+  // Agent self-signature over fields 1-8 with signatures field cleared.
+  recall.common.v1.Signature signature = 9;
+  // Derived content-address: SHA-256 of canonical serialization (sig cleared).
+  recall.common.v1.Hash passport_id = 10;
+}
+
+// Emitted when an agent registers.
+message AgentRegisterReceipt {
+  recall.common.v1.Hash passport_id = 1;
+  recall.common.v1.AgentId agent_id = 2;
+  google.protobuf.Timestamp registered_at = 3;
+}
+
+// Request to rotate the signing key. Signed with the OLD key.
+message KeyRotationRequest {
+  recall.common.v1.Hash passport_id = 1;
+  // New public key
+  bytes new_public_key = 2;
+  // Signed with old private key to prove continuity
+  recall.common.v1.Signature old_key_signature = 3;
+  // Also signed with new key
+  recall.common.v1.Signature new_key_signature = 4;
+  google.protobuf.Timestamp rotated_at = 5;
+}
+
+// Request to revoke own passport.
+message SelfRevokeRequest {
+  recall.common.v1.Hash passport_id = 1;
+  string reason = 2;
+  recall.common.v1.Signature signature = 3;
+  google.protobuf.Timestamp revoked_at = 4;
+}
+
+// Operator-forced revocation.
+message OperatorRevokeRequest {
+  recall.common.v1.Hash passport_id = 1;
+  string reason = 2;
+  // If true, revoke all capabilities ever issued by this agent.
+  bool cascade_capabilities = 3;
+  recall.common.v1.Signature operator_signature = 4;
+  google.protobuf.Timestamp revoked_at = 5;
+}

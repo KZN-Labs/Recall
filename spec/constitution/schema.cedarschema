@@ -1,0 +1,59 @@
+namespace Recall {
+
+  entity Workspace {
+    topology_mode: String,
+    active_constitution_version: String
+  };
+
+  entity Agent {
+    trust_level: Long,
+    role: String,
+    reputation: Decimal,
+    remaining_write_budget_usd_cents: Long,
+    enforcement_stage: String
+  };
+
+  entity MemoryEntry {
+    entity_id: String,
+    scope: String,
+    tags: Set<String>,
+    event: String,
+    trust_level: Long
+  };
+
+  entity RecallEntity {
+    account_value_usd_cents: Long,
+    pii_flag: Bool,
+    tags: Set<String>
+  };
+
+  action WriteMemory appliesTo {
+    principal: Agent,
+    resource: MemoryEntry,
+    context: {
+      metadata: Record,
+      has_supervisor_countersign: Bool,
+      estimated_cost_usd_cents: Long,
+      entity_account_value_usd_cents: Long
+    }
+  };
+
+  action ReadMemory appliesTo {
+    principal: Agent,
+    resource: MemoryEntry,
+    context: {}
+  };
+
+  action CreateHandoff appliesTo {
+    principal: Agent,
+    resource: RecallEntity,
+    context: {}
+  };
+
+  action PublishProfile appliesTo {
+    principal: Agent,
+    resource: Workspace,
+    context: {}
+  };
+
+}

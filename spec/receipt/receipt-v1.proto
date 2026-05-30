@@ -1,0 +1,65 @@
+syntax = "proto3";
+package recall.receipt.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+import "common.proto";
+
+option go_package = "github.com/KZN-Labs/Recall-/gen/go/recall/receipt/v1;receiptv1";
+
+// Canonical action kind strings — use exactly these.
+// memory.write | memory.read | memory.conflict.detected | memory.conflict.resolved
+// workspace.create | workspace.snapshot | workspace.rollback
+// handoff.capsule.create | handoff.capsule.deliver
+// registry.publish | registry.import
+// agent.register | agent.revoke | agent.operator_revoke | agent.rotate_key
+// capability.issue | capability.attenuate | capability.revoke
+// capability.check.pass | capability.check.deny
+// constitution.evaluate.pass | constitution.evaluate.deny
+// enforcement.detect | enforcement.coach | enforcement.quarantine | enforcement.evict | enforcement.reverse
+// anchor.commit
+
+// Append-only audit record for every consequential action.
+// Receipt ID = SHA-256 of canonical proto serialization with signatures cleared.
+message Receipt {
+  // Content address: SHA-256 of canonical serialization (signatures cleared).
+  recall.common.v1.Hash id = 1;
+  // One of the canonical action kind strings above.
+  string action_kind = 2;
+  recall.common.v1.WorkspaceId workspace_id = 3;
+  // Passport ID of the acting agent.
+  recall.common.v1.Hash actor_passport_id = 4;
+  // Stable agent ID.
+  recall.common.v1.AgentId actor_agent_id = 5;
+  google.protobuf.Timestamp timestamp = 6;
+  // Causal predecessors emitted by the sender, not reconstructed by a tracer.
+  repeated recall.common.v1.CausalRef causal_predecessors = 7;
+  // SHA-256 of action inputs.
+  recall.common.v1.Hash evidence_digest = 8;
+  // Signatures: ACTOR (required), CONTROL_PLANE, SUPERVISOR, BATCH_ROOT
+  repeated recall.common.v1.Signature signatures = 9;
+  // Walrus permanent blob reference for this receipt.
+  recall.common.v1.WalrusBlobRef walrus_blob = 10;
+  recall.common.v1.SealStatus seal_status = 11;
+  // Present on memory.write receipts.
+  recall.common.v1.CostAnnotation cost_annotation = 12;
+  // Arbitrary action-specific evidence payload.
+  google.protobuf.Struct evidence = 13;
+  // For capability.check.deny: the deny reason and unmet caveats.
+  string deny_reason = 14;
+  repeated string unmet_caveats = 15;
+  // For enforcement receipts: reputation delta applied.
+  double reputation_delta = 16;
+}
+
+// Batch of receipts sealed together into a Merkle tree anchored to Sui.
+message ReceiptBatch {
+  // Merkle root of all receipt IDs in this batch.
+  recall.common.v1.Hash merkle_root = 1;
+  repeated recall.common.v1.Hash receipt_ids = 2;
+  // Sui transaction digest after anchoring.
+  string sui_tx_digest = 3;
+  google.protobuf.Timestamp sealed_at = 4;
+  // BATCH_ROOT signature over the merkle root.
+  recall.common.v1.Signature batch_signature = 5;
+}

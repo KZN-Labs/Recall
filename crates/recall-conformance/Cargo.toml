@@ -1,0 +1,22 @@
+[package]
+name = "recall-conformance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+recall-core = { path = "../recall-core" }
+recall-crypto = { path = "../recall-crypto" }
+recall-receipt = { path = "../recall-receipt" }
+recall-passport = { path = "../recall-passport" }
+recall-capability = { path = "../recall-capability" }
+recall-proto = { path = "../recall-proto" }
+prost = { workspace = true }
+prost-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+hex = { workspace = true }
+
+[lib]
+name = "recall_conformance"
+path = "src/lib.rs"

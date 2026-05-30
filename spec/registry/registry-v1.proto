@@ -1,0 +1,78 @@
+syntax = "proto3";
+package recall.registry.v1;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+option go_package = "github.com/KZN-Labs/Recall-/gen/go/recall/registry/v1;registryv1";
+
+// A published agent memory profile in the registry.
+message RegistryProfile {
+  string name = 1;
+  string version = 2;
+  string author = 3;
+  string category = 4;
+  string description = 5;
+  int64 memory_count = 6;
+  int64 artifact_count = 7;
+  int64 import_count = 8;
+  string recommended_system_prompt = 9;
+  WorkspaceConfig workspace_config = 10;
+  recall.common.v1.WalrusBlobRef walrus_blob = 11;
+  google.protobuf.Timestamp published_at = 12;
+  // Once published, profiles are immutable.
+  bool immutable = 13;
+  ComponentBlobIds component_blob_ids = 14;
+}
+
+message WorkspaceConfig {
+  int32 suggested_trust_level = 1;
+  recall.common.v1.AgentRole suggested_role = 2;
+  string constitution_version = 3;
+}
+
+message ComponentBlobIds {
+  string memory_entries = 1;
+  string workflow_artifacts = 2;
+  string system_prompt = 3;
+  string workspace_config = 4;
+}
+
+message PublishRequest {
+  string name = 1;
+  string version = 2;
+  string description = 3;
+  // Passport ID of the publishing agent.
+  recall.common.v1.Hash passport_id = 4;
+  recall.common.v1.WorkspaceId source_workspace_id = 5;
+  recall.common.v1.Signature signature = 6;
+}
+
+message PublishResponse {
+  RegistryProfile profile = 1;
+  recall.common.v1.Hash receipt_id = 2;
+}
+
+message ImportRequest {
+  string name = 1;
+  string version = 2;
+  recall.common.v1.WorkspaceId target_workspace_id = 3;
+  recall.common.v1.Hash passport_id = 4;
+}
+
+message ImportResponse {
+  RegistryProfile profile = 1;
+  recall.common.v1.Hash receipt_id = 2;
+}
+
+message ListProfilesRequest {
+  string category = 1;
+  string name_prefix = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListProfilesResponse {
+  repeated RegistryProfile profiles = 1;
+  string next_page_token = 2;
+}

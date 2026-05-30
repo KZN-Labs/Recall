@@ -1,0 +1,105 @@
+syntax = "proto3";
+package recall.memory.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+import "common.proto";
+
+option go_package = "github.com/KZN-Labs/Recall-/gen/go/recall/memory/v1;memoryv1";
+
+// A memory entry written by an agent about a specific entity.
+message MemoryEntry {
+  string id = 1;
+  // Receipt that authorized and records this write.
+  recall.common.v1.Hash receipt_id = 2;
+  recall.common.v1.WorkspaceId workspace_id = 3;
+  // The entity this memory is about (e.g. "sarah@email.com").
+  string entity = 4;
+  recall.common.v1.AgentId agent_id = 5;
+  recall.common.v1.Hash passport_id = 6;
+  string model_provider = 7;
+  string model_name = 8;
+  int32 trust_level = 9;
+  // Event type (e.g. "credit_offered", "flag_suspicious").
+  string event = 10;
+  // Arbitrary structured payload.
+  google.protobuf.Struct data = 11;
+  repeated string tags = 12;
+  // Scope: "internal" or "external".
+  string scope = 13;
+  google.protobuf.Timestamp timestamp = 14;
+  recall.common.v1.WalrusBlobRef walrus_blob = 15;
+  // Agent signature over this entry.
+  recall.common.v1.Signature signature = 16;
+  repeated recall.common.v1.CausalRef causal_predecessors = 17;
+  recall.common.v1.CostAnnotation cost_annotation = 18;
+  recall.common.v1.SealStatus seal_status = 19;
+}
+
+// Conflict between two memory signals on the same entity.
+message ConflictRecord {
+  string id = 1;
+  recall.common.v1.Hash receipt_id = 2;
+  recall.common.v1.WorkspaceId workspace_id = 3;
+  string entity = 4;
+  ConflictSignal signal_a = 5;
+  ConflictSignal signal_b = 6;
+  ConflictStatus status = 7;
+  // Trust-ranked auto-resolution suggestion.
+  string auto_resolution = 8;
+  google.protobuf.Timestamp detected_at = 9;
+  google.protobuf.Timestamp resolved_at = 10;
+  string resolution = 11;
+  recall.common.v1.WalrusBlobRef walrus_blob = 12;
+}
+
+message ConflictSignal {
+  string memory_id = 1;
+  recall.common.v1.AgentId agent_id = 2;
+  int32 trust_level = 3;
+  string event = 4;
+  google.protobuf.Timestamp timestamp = 5;
+}
+
+enum ConflictStatus {
+  CONFLICT_STATUS_UNSPECIFIED = 0;
+  PENDING = 1;
+  AUTO_RESOLVED = 2;
+  MANUALLY_RESOLVED = 3;
+}
+
+// Workspace definition.
+message Workspace {
+  recall.common.v1.WorkspaceId id = 1;
+  string name = 2;
+  recall.common.v1.TopologyMode topology_mode = 3;
+  google.protobuf.Timestamp created_at = 4;
+  string active_constitution_version = 5;
+  repeated WorkspaceAgent agents = 6;
+  recall.common.v1.WalrusBlobRef snapshot_blob = 7;
+}
+
+message WorkspaceAgent {
+  recall.common.v1.Hash passport_id = 1;
+  recall.common.v1.AgentId agent_id = 2;
+  recall.common.v1.AgentRole role = 3;
+  int32 trust_level = 4;
+  string model_provider = 5;
+  string model_name = 6;
+  double reputation = 7;
+  recall.common.v1.EnforcementStage enforcement_stage = 8;
+}
+
+// Snapshot of memory passed from one agent to another.
+message HandoffCapsule {
+  string id = 1;
+  recall.common.v1.AgentId from_agent_id = 2;
+  recall.common.v1.AgentId to_agent_id = 3;
+  string entity = 4;
+  recall.common.v1.WorkspaceId workspace_id = 5;
+  repeated MemoryEntry memory_snapshot = 6;
+  google.protobuf.Timestamp created_at = 7;
+  // Signed by the control plane.
+  recall.common.v1.Signature signature = 8;
+  recall.common.v1.WalrusBlobRef walrus_blob = 9;
+}

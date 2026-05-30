@@ -1,0 +1,314 @@
+syntax = "proto3";
+package recall.controlplane.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+import "common.proto";
+import "passport/passport-v1.proto";
+import "receipt/receipt-v1.proto";
+import "capability/capability-v1.proto";
+import "memory/memory-v1.proto";
+import "registry/registry-v1.proto";
+
+option go_package = "github.com/KZN-Labs/Recall-/gen/go/recall/controlplane/v1;controlplanev1";
+
+// ─── Admission ─────────────────────────────────────────────────────────────
+
+service AdmissionService {
+  // Agent presents passport; operator admits or rejects.
+  rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
+  rpc RevokeAgent(recall.passport.v1.SelfRevokeRequest) returns (RevokeAgentResponse);
+  rpc OperatorRevokeAgent(recall.passport.v1.OperatorRevokeRequest) returns (RevokeAgentResponse);
+  rpc RotateKey(recall.passport.v1.KeyRotationRequest) returns (RotateKeyResponse);
+  rpc GetPassport(GetPassportRequest) returns (recall.passport.v1.Passport);
+}
+
+message RegisterAgentRequest {
+  recall.passport.v1.Passport passport = 1;
+}
+
+message RegisterAgentResponse {
+  recall.common.v1.Hash passport_id = 1;
+  recall.common.v1.Hash receipt_id = 2;
+}
+
+message RevokeAgentResponse {
+  recall.common.v1.Hash receipt_id = 1;
+}
+
+message RotateKeyResponse {
+  recall.common.v1.Hash receipt_id = 1;
+}
+
+message GetPassportRequest {
+  recall.common.v1.Hash passport_id = 1;
+}
+
+// ─── Capability ────────────────────────────────────────────────────────────
+
+service CapabilityService {
+  rpc IssueCapability(IssueCapabilityRequest) returns (IssueCapabilityResponse);
+  rpc AttenuateCapability(recall.capability.v1.AttenuateRequest) returns (IssueCapabilityResponse);
+  rpc RevokeCapability(RevokeCapabilityRequest) returns (RevokeCapabilityResponse);
+  rpc CheckCapability(CheckCapabilityRequest) returns (CheckCapabilityResponse);
+  rpc GetCapability(GetCapabilityRequest) returns (recall.capability.v1.Capability);
+}
+
+message IssueCapabilityRequest {
+  recall.common.v1.Hash issuer_passport_id = 1;
+  recall.common.v1.Hash holder_passport_id = 2;
+  recall.capability.v1.CapabilityScope scope = 3;
+  repeated recall.capability.v1.Caveat caveats = 4;
+  google.protobuf.Timestamp valid_until = 5;
+}
+
+message IssueCapabilityResponse {
+  recall.capability.v1.Capability capability = 1;
+  recall.common.v1.Hash receipt_id = 2;
+}
+
+message RevokeCapabilityRequest {
+  recall.common.v1.Hash capability_id = 1;
+  string reason = 2;
+  recall.common.v1.Signature revoker_signature = 3;
+}
+
+message RevokeCapabilityResponse {
+  recall.common.v1.Hash receipt_id = 1;
+}
+
+message CheckCapabilityRequest {
+  recall.common.v1.Hash capability_id = 1;
+  string action_kind = 2;
+  string entity = 3;
+  google.protobuf.Struct context = 4;
+}
+
+message CheckCapabilityResponse {
+  bool allowed = 1;
+  string deny_reason = 2;
+  repeated string unmet_caveats = 3;
+  recall.common.v1.Hash receipt_id = 4;
+}
+
+message GetCapabilityRequest {
+  recall.common.v1.Hash capability_id = 1;
+}
+
+// ─── Memory ────────────────────────────────────────────────────────────────
+
+service MemoryService {
+  rpc WriteMemory(WriteMemoryRequest) returns (WriteMemoryResponse);
+  rpc ReadMemory(ReadMemoryRequest) returns (ReadMemoryResponse);
+  rpc ListMemory(ListMemoryRequest) returns (ListMemoryResponse);
+  rpc GetConflicts(GetConflictsRequest) returns (GetConflictsResponse);
+  rpc ResolveConflict(ResolveConflictRequest) returns (ResolveConflictResponse);
+}
+
+message WriteMemoryRequest {
+  recall.memory.v1.MemoryEntry entry = 1;
+  recall.common.v1.Hash capability_id = 2;
+}
+
+message WriteMemoryResponse {
+  string memory_id = 1;
+  recall.common.v1.Hash receipt_id = 2;
+  recall.common.v1.WalrusBlobRef walrus_blob = 3;
+}
+
+message ReadMemoryRequest {
+  string entity = 1;
+  recall.common.v1.WorkspaceId workspace_id = 2;
+  recall.common.v1.Hash capability_id = 3;
+}
+
+message ReadMemoryResponse {
+  repeated recall.memory.v1.MemoryEntry entries = 1;
+  recall.common.v1.Hash receipt_id = 2;
+}
+
+message ListMemoryRequest {
+  recall.common.v1.WorkspaceId workspace_id = 1;
+  string entity_prefix = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListMemoryResponse {
+  repeated recall.memory.v1.MemoryEntry entries = 1;
+  string next_page_token = 2;
+}
+
+message GetConflictsRequest {
+  recall.common.v1.WorkspaceId workspace_id = 1;
+  string entity = 2;
+  recall.memory.v1.ConflictStatus status_filter = 3;
+}
+
+message GetConflictsResponse {
+  repeated recall.memory.v1.ConflictRecord conflicts = 1;
+}
+
+message ResolveConflictRequest {
+  string conflict_id = 1;
+  string resolution = 2;
+  recall.common.v1.Signature operator_signature = 3;
+}
+
+message ResolveConflictResponse {
+  recall.common.v1.Hash receipt_id = 1;
+}
+
+// ─── Handoff ───────────────────────────────────────────────────────────────
+
+service HandoffService {
+  rpc CreateHandoff(CreateHandoffRequest) returns (CreateHandoffResponse);
+  rpc DeliverHandoff(DeliverHandoffRequest) returns (DeliverHandoffResponse);
+}
+
+message CreateHandoffRequest {
+  recall.common.v1.AgentId from_agent_id = 1;
+  recall.common.v1.AgentId to_agent_id = 2;
+  string entity = 3;
+  recall.common.v1.WorkspaceId workspace_id = 4;
+  recall.common.v1.Hash capability_id = 5;
+}
+
+message CreateHandoffResponse {
+  recall.memory.v1.HandoffCapsule capsule = 1;
+  recall.common.v1.Hash receipt_id = 2;
+}
+
+message DeliverHandoffRequest {
+  string capsule_id = 1;
+  recall.common.v1.Hash recipient_passport_id = 2;
+}
+
+message DeliverHandoffResponse {
+  recall.common.v1.Hash receipt_id = 1;
+}
+
+// ─── Workspace ─────────────────────────────────────────────────────────────
+
+service WorkspaceService {
+  rpc CreateWorkspace(CreateWorkspaceRequest) returns (CreateWorkspaceResponse);
+  rpc GetWorkspace(GetWorkspaceRequest) returns (recall.memory.v1.Workspace);
+  rpc SnapshotWorkspace(SnapshotWorkspaceRequest) returns (SnapshotWorkspaceResponse);
+  rpc RollbackWorkspace(RollbackWorkspaceRequest) returns (RollbackWorkspaceResponse);
+}
+
+message CreateWorkspaceRequest {
+  string name = 1;
+  recall.common.v1.TopologyMode topology_mode = 2;
+  string constitution_version = 3;
+}
+
+message CreateWorkspaceResponse {
+  recall.memory.v1.Workspace workspace = 1;
+  recall.common.v1.Hash receipt_id = 2;
+}
+
+message GetWorkspaceRequest {
+  recall.common.v1.WorkspaceId workspace_id = 1;
+}
+
+message SnapshotWorkspaceRequest {
+  recall.common.v1.WorkspaceId workspace_id = 1;
+}
+
+message SnapshotWorkspaceResponse {
+  recall.common.v1.Hash receipt_id = 1;
+  recall.common.v1.WalrusBlobRef snapshot_blob = 2;
+}
+
+message RollbackWorkspaceRequest {
+  recall.common.v1.WorkspaceId workspace_id = 1;
+  // Receipt ID of the snapshot to roll back to.
+  recall.common.v1.Hash target_snapshot_receipt_id = 2;
+  recall.common.v1.Signature operator_signature = 3;
+}
+
+message RollbackWorkspaceResponse {
+  recall.common.v1.Hash receipt_id = 1;
+}
+
+// ─── Registry ──────────────────────────────────────────────────────────────
+
+service RegistryService {
+  rpc PublishProfile(recall.registry.v1.PublishRequest) returns (recall.registry.v1.PublishResponse);
+  rpc ImportProfile(recall.registry.v1.ImportRequest) returns (recall.registry.v1.ImportResponse);
+  rpc ListProfiles(recall.registry.v1.ListProfilesRequest) returns (recall.registry.v1.ListProfilesResponse);
+  rpc GetProfile(GetProfileRequest) returns (recall.registry.v1.RegistryProfile);
+}
+
+message GetProfileRequest {
+  string name = 1;
+  string version = 2;
+}
+
+// ─── Inspector ─────────────────────────────────────────────────────────────
+
+service InspectorService {
+  rpc GetReceipt(GetReceiptRequest) returns (recall.receipt.v1.Receipt);
+  rpc ListReceipts(ListReceiptsRequest) returns (ListReceiptsResponse);
+  rpc GetReceiptBatch(GetReceiptBatchRequest) returns (recall.receipt.v1.ReceiptBatch);
+  rpc StreamReceipts(StreamReceiptsRequest) returns (stream recall.receipt.v1.Receipt);
+}
+
+message GetReceiptRequest {
+  recall.common.v1.Hash receipt_id = 1;
+}
+
+message ListReceiptsRequest {
+  recall.common.v1.WorkspaceId workspace_id = 1;
+  string action_kind_filter = 2;
+  recall.common.v1.AgentId agent_id_filter = 3;
+  int32 page_size = 4;
+  string page_token = 5;
+}
+
+message ListReceiptsResponse {
+  repeated recall.receipt.v1.Receipt receipts = 1;
+  string next_page_token = 2;
+}
+
+message GetReceiptBatchRequest {
+  recall.common.v1.Hash merkle_root = 1;
+}
+
+message StreamReceiptsRequest {
+  recall.common.v1.WorkspaceId workspace_id = 1;
+  string action_kind_filter = 2;
+}
+
+// ─── Envelope / Transport ──────────────────────────────────────────────────
+
+service EnvelopeService {
+  rpc SendEnvelope(EnvelopeRequest) returns (EnvelopeResponse);
+  rpc Subscribe(SubscribeRequest) returns (stream Envelope);
+}
+
+message Envelope {
+  string id = 1;
+  string envelope_type = 2;
+  recall.common.v1.AgentId to_agent_id = 3;
+  recall.common.v1.AgentId from_agent_id = 4;
+  bytes payload = 5;
+  google.protobuf.Timestamp sent_at = 6;
+  // Replay-protection nonce.
+  string nonce = 7;
+}
+
+message EnvelopeRequest {
+  Envelope envelope = 1;
+  recall.common.v1.Signature sender_signature = 2;
+}
+
+message EnvelopeResponse {
+  recall.common.v1.Hash receipt_id = 1;
+}
+
+message SubscribeRequest {
+  recall.common.v1.AgentId agent_id = 1;
+  recall.common.v1.Hash passport_id = 2;
+}

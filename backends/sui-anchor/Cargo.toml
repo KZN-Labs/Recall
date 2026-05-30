@@ -1,0 +1,14 @@
+[package]
+name = "sui-anchor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+recall-core = { path = "../../crates/recall-core" }
+recall-proto = { path = "../../crates/recall-proto" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+hex = { workspace = true }

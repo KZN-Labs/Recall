@@ -1,0 +1,15 @@
+[package]
+name = "sui-governance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+recall-core = { path = "../../crates/recall-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+reqwest = { workspace = true }

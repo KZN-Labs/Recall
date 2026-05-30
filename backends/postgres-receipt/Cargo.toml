@@ -1,0 +1,19 @@
+[package]
+name = "postgres-receipt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+recall-core = { path = "../../crates/recall-core" }
+recall-proto = { path = "../../crates/recall-proto" }
+sqlx = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+hex = { workspace = true }

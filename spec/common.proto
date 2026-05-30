@@ -1,0 +1,92 @@
+syntax = "proto3";
+package recall.common.v1;
+
+option go_package = "github.com/KZN-Labs/Recall-/gen/go/recall/common/v1;commonv1";
+
+// Stable agent identifier (UUID v7). Survives key rotations.
+message AgentId {
+  string value = 1;
+}
+
+// Workspace identifier, e.g. "ws_acme-customer-ops"
+message WorkspaceId {
+  string value = 1;
+}
+
+// Passport identifier, e.g. "pp_support-agent-001"
+message PassportId {
+  string value = 1;
+}
+
+// SHA-256 content address (hex-encoded, 64 chars)
+message Hash {
+  string hex = 1;
+}
+
+// Ed25519 raw bytes (32 bytes public key or 64 bytes signature)
+message Signature {
+  bytes bytes = 1;
+  // Role: ACTOR, CONTROL_PLANE, SUPERVISOR, BATCH_ROOT
+  string role = 2;
+  // Ed25519 public key that produced this signature
+  bytes signer_public_key = 3;
+}
+
+// Reference to a causal predecessor receipt
+message CausalRef {
+  Hash receipt_id = 1;
+}
+
+// Token cost for one model call
+message CostAnnotation {
+  string model_provider = 1;
+  string model_name = 2;
+  int64 tokens_in = 3;
+  int64 tokens_out = 4;
+  // Cost in USD cents (integer)
+  int64 usd_cents = 5;
+}
+
+// Walrus blob reference
+message WalrusBlobRef {
+  string blob_id = 1;
+}
+
+// Seal encryption status
+enum SealStatus {
+  SEAL_STATUS_UNSPECIFIED = 0;
+  UNSEALED = 1;
+  SEALED = 2;
+}
+
+// Agent role in workspace
+enum AgentRole {
+  AGENT_ROLE_UNSPECIFIED = 0;
+  READER = 1;
+  WRITER = 2;
+  ADMIN = 3;
+}
+
+// Trust level (1=low, 2=medium, 3=high)
+enum TrustLevel {
+  TRUST_LEVEL_UNSPECIFIED = 0;
+  LOW = 1;
+  MEDIUM = 2;
+  HIGH = 3;
+}
+
+// Workspace topology
+enum TopologyMode {
+  TOPOLOGY_MODE_UNSPECIFIED = 0;
+  CLOSED = 1;
+  OPEN = 2;
+}
+
+// Enforcement stage
+enum EnforcementStage {
+  ENFORCEMENT_STAGE_NONE = 0;
+  DETECT = 1;
+  COACH = 2;
+  QUARANTINE = 3;
+  EVICT = 4;
+}

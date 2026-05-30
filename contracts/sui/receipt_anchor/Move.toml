@@ -1,0 +1,7 @@
+[package]
+name = "recall_receipt_anchor"
+version = "0.1.0"
+edition = "2024"
+
+[addresses]
+recall_receipt_anchor = "0x0"

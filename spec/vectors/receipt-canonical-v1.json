@@ -1,0 +1,36 @@
+{
+  "_comment": "Canonical serialization conformance vector for receipt ID computation. Two implementations observing the same action MUST produce bit-identical IDs.",
+  "version": "1.0.0",
+  "vectors": [
+    {
+      "id": "vec-001",
+      "description": "memory.write receipt with cost annotation",
+      "input": {
+        "action_kind": "memory.write",
+        "workspace_id": "ws_acme-customer-ops",
+        "actor_passport_id": "pp_support-agent-001",
+        "actor_agent_id": "550e8400-e29b-41d4-a716-446655440000",
+        "timestamp": "2026-05-18T10:32:00Z",
+        "causal_predecessors": [],
+        "evidence_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "signatures": []
+      },
+      "expected_receipt_id": "PLACEHOLDER_COMPUTED_BY_CONFORMANCE_SUITE"
+    },
+    {
+      "id": "vec-002",
+      "description": "capability.check.pass receipt",
+      "input": {
+        "action_kind": "capability.check.pass",
+        "workspace_id": "ws_acme-customer-ops",
+        "actor_passport_id": "pp_control-plane-001",
+        "actor_agent_id": "00000000-0000-0000-0000-000000000001",
+        "timestamp": "2026-05-18T10:32:01Z",
+        "causal_predecessors": ["PLACEHOLDER_PREV_RECEIPT_ID"],
+        "evidence_digest": "abc123def456abc123def456abc123def456abc123def456abc123def456abc1",
+        "signatures": []
+      },
+      "expected_receipt_id": "PLACEHOLDER_COMPUTED_BY_CONFORMANCE_SUITE"
+    }
+  ]
+}

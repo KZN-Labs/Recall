@@ -1,0 +1,104 @@
+syntax = "proto3";
+package recall.capability.v1;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+option go_package = "github.com/KZN-Labs/Recall-/gen/go/recall/capability/v1;capabilityv1";
+
+// Caveat types (closed set — do not extend without updating the spec).
+enum CaveatType {
+  CAVEAT_TYPE_UNSPECIFIED = 0;
+  TIME_OF_DAY = 1;
+  SUPERVISOR_REQUIRED = 2;
+  RATE_LIMIT = 3;
+  NEVER_IF_TAGGED = 4;
+  ONLY_IF_TAGGED = 5;
+  CONSTITUTION_VERSION = 6;
+}
+
+message TimeOfDayCaveat {
+  int32 utc_hours_start = 1;
+  int32 utc_hours_end = 2;
+}
+
+message RateLimitCaveat {
+  int64 max_actions = 1;
+  int64 window_seconds = 2;
+}
+
+message TagCaveat {
+  string tag = 1;
+  // For NeverIfTagged: the scope where this is forbidden (e.g. "external")
+  string scope = 2;
+}
+
+message ConstitutionVersionCaveat {
+  // SemVer range, e.g. ">=1.0.0 <2.0.0"
+  string version_range = 1;
+}
+
+// One caveat in a capability.
+message Caveat {
+  CaveatType type = 1;
+  oneof spec {
+    TimeOfDayCaveat time_of_day = 2;
+    RateLimitCaveat rate_limit = 3;
+    TagCaveat tag_caveat = 4;
+    ConstitutionVersionCaveat constitution_version = 5;
+  }
+}
+
+// Scope of what a capability permits.
+message CapabilityScope {
+  // Explicit list of permitted action kinds. Empty = default-deny.
+  repeated string permitted_action_kinds = 1;
+  // Glob patterns for permitted entities (e.g. "customer.*")
+  repeated string permitted_entity_scopes = 2;
+  // Glob patterns for explicitly forbidden entities.
+  repeated string forbidden_entity_scopes = 3;
+  // Resource tags this capability applies to.
+  repeated string resource_tags = 4;
+  // Maximum spend in USD (string to preserve decimal precision).
+  string usd_max = 5;
+  // If true, all action kinds are permitted (must be set explicitly).
+  bool unrestricted_actions = 6;
+}
+
+// Signed, attenuable, expiring authority token.
+// ID = SHA-256 of canonical serialization (signature cleared).
+message Capability {
+  recall.common.v1.Hash id = 1;
+  recall.common.v1.Hash issuer_passport_id = 2;
+  recall.common.v1.Hash holder_passport_id = 3;
+  recall.common.v1.WorkspaceId workspace_id = 4;
+  CapabilityScope scope = 5;
+  repeated Caveat caveats = 6;
+  google.protobuf.Timestamp valid_from = 7;
+  // Required. Default max: 90 days.
+  google.protobuf.Timestamp valid_until = 8;
+  // Parent capability (for attenuated children).
+  recall.common.v1.Hash parent_capability_id = 9;
+  // Depth in the attenuation chain (max 8).
+  int32 attenuation_depth = 10;
+  // Issuer signature.
+  recall.common.v1.Signature signature = 11;
+}
+
+// Request to attenuate (narrow) a capability.
+message AttenuateRequest {
+  recall.common.v1.Hash parent_id = 1;
+  recall.common.v1.Hash new_holder_passport_id = 2;
+  // Must be a strict subset of the parent's scope.
+  CapabilityScope new_scope = 3;
+  repeated Caveat additional_caveats = 4;
+  google.protobuf.Timestamp new_valid_until = 5;
+}
+
+// Revocation entry for a capability (immediate; checked on every use).
+message CapabilityRevocation {
+  recall.common.v1.Hash capability_id = 1;
+  string reason = 2;
+  google.protobuf.Timestamp revoked_at = 3;
+  recall.common.v1.Signature revoker_signature = 4;
+}
