@@ -31,6 +31,22 @@ impl WorkspaceService for WorkspaceServiceImpl {
         request: Request<CreateWorkspaceRequest>,
     ) -> Result<Response<CreateWorkspaceResponse>, Status> {
         let req = request.into_inner();
+
+        // Validate name: no spaces, max 64 chars
+        if req.name.is_empty() {
+            return Err(Status::invalid_argument("workspace name cannot be empty"));
+        }
+        if req.name.len() > 64 {
+            return Err(Status::invalid_argument(
+                "workspace name cannot exceed 64 characters",
+            ));
+        }
+        if req.name.contains(' ') {
+            return Err(Status::invalid_argument(
+                "workspace name cannot contain spaces",
+            ));
+        }
+
         let workspace = recall_memory::workspace::new_workspace(
             &req.name,
             req.topology_mode,
@@ -44,6 +60,9 @@ impl WorkspaceService for WorkspaceServiceImpl {
                 .map(|w| w.value.clone())
                 .unwrap_or_default(),
         );
+
+        // Store in workspace_store so get_workspace and list can return it
+        self.state.workspace_store.insert(workspace.clone());
 
         let cp_agent = AgentId("00000000-0000-0000-0000-000000000001".to_string());
         let cp_passport = ContentHash("cp_passport".to_string());
@@ -67,9 +86,33 @@ impl WorkspaceService for WorkspaceServiceImpl {
 
     async fn get_workspace(
         &self,
-        _request: Request<GetWorkspaceRequest>,
+        request: Request<GetWorkspaceRequest>,
     ) -> Result<Response<mem_proto::Workspace>, Status> {
-        Err(Status::unimplemented("persistent workspace store requires Walrus backend"))
+        let req = request.into_inner();
+        let ws_id = req
+            .workspace_id
+            .map(|w| w.value)
+            .unwrap_or_default();
+
+        if ws_id.is_empty() {
+            return Err(Status::invalid_argument("missing workspace_id"));
+        }
+
+        // Check explicit workspace_store first, then auto-create from memory if present
+        if let Some(ws) = self.state.workspace_store.get(&ws_id) {
+            return Ok(Response::new(ws));
+        }
+
+        // Auto-register workspace if it exists in memory store (backward compat)
+        let entries = self.state.memory_store.list_by_workspace(&ws_id);
+        if !entries.is_empty() {
+            self.state.workspace_store.ensure_exists(&ws_id);
+            if let Some(ws) = self.state.workspace_store.get(&ws_id) {
+                return Ok(Response::new(ws));
+            }
+        }
+
+        Err(Status::not_found(format!("workspace {ws_id} not found")))
     }
 
     async fn snapshot_workspace(

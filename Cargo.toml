@@ -43,6 +43,7 @@ ed25519-dalek = { version = "2.1", features = ["rand_core", "pkcs8", "pem"] }
 sha2 = "0.10"
 ring = "0.17"
 rand = "0.8"
+bech32 = "0.9"
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "uuid", "chrono", "json"] }
 # AWS S3

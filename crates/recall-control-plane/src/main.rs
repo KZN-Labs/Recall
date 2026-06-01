@@ -8,6 +8,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod enforcement;
 mod http;
 mod services;
+mod workspace_store;
 mod state;
 
 use services::{
@@ -32,28 +33,40 @@ use recall_proto::controlplane::v1::{
     workspace_service_server::WorkspaceServiceServer,
 };
 
+use state::AppStateConfig;
+
 #[derive(Parser, Debug)]
 #[command(name = "recall-control-plane", about = "RECALL gRPC control plane server")]
 struct Args {
     #[arg(long, env = "RECALL_BIND_ADDR", default_value = "0.0.0.0:9090")]
     bind_addr: SocketAddr,
 
-    /// HTTP REST + dashboard API port.
     #[arg(long, env = "RECALL_HTTP_ADDR", default_value = "0.0.0.0:8080")]
     http_addr: SocketAddr,
 
-    /// Sui RPC endpoint for on-chain governance checks.
-    /// Leave unset to use offline (local) governance evaluation.
+    /// Sui RPC endpoint for on-chain governance. Leave unset for offline mode.
     #[arg(long, env = "RECALL_SUI_RPC_URL")]
     sui_rpc_url: Option<String>,
 
-    /// Object ID of the WorkspacePolicy shared object on Sui.
     #[arg(long, env = "RECALL_GOVERNANCE_POLICY_ID")]
     governance_policy_id: Option<String>,
 
-    /// Object ID of the AgentEnforcementRecord shared object on Sui.
     #[arg(long, env = "RECALL_GOVERNANCE_RECORD_ID")]
     governance_record_id: Option<String>,
+
+    /// Walrus publisher URL. Set to enable real Walrus writes.
+    /// Default testnet: https://publisher.walrus-testnet.walrus.space
+    #[arg(long, env = "RECALL_WALRUS_PUBLISHER")]
+    walrus_publisher: Option<String>,
+
+    /// Walrus aggregator URL (for reads).
+    /// Default testnet: https://aggregator.walrus-testnet.walrus.space
+    #[arg(long, env = "RECALL_WALRUS_AGGREGATOR")]
+    walrus_aggregator: Option<String>,
+
+    /// Enable Walrus testnet with default endpoints (no URL flags needed).
+    #[arg(long, env = "RECALL_WALRUS_TESTNET")]
+    walrus_testnet: bool,
 
     #[arg(long, env = "RECALL_LOG_FORMAT", default_value = "text")]
     log_format: String,
@@ -70,30 +83,48 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    if args.sui_rpc_url.is_some() {
-        info!("Governance mode: on-chain (Sui RPC: {})", args.sui_rpc_url.as_deref().unwrap());
+    // Resolve Walrus endpoints
+    let walrus_publisher = if args.walrus_testnet && args.walrus_publisher.is_none() {
+        Some(walrus_memory::WALRUS_TESTNET_PUBLISHER.to_string())
     } else {
-        info!("Governance mode: offline (local rule evaluation)");
+        args.walrus_publisher
+    };
+    let walrus_aggregator = if args.walrus_testnet && args.walrus_aggregator.is_none() {
+        Some(walrus_memory::WALRUS_TESTNET_AGGREGATOR.to_string())
+    } else {
+        args.walrus_aggregator
+    };
+
+    if let Some(ref pub_url) = walrus_publisher {
+        info!("Walrus: ENABLED  publisher={pub_url}");
+    } else {
+        info!("Walrus: offline (pass --walrus-testnet to enable)");
     }
 
-    let app_state = std::sync::Arc::new(state::AppState::new(
-        args.sui_rpc_url,
-        args.governance_policy_id,
-        args.governance_record_id,
-    )?);
+    if args.sui_rpc_url.is_some() {
+        info!("Governance: on-chain ({})", args.sui_rpc_url.as_deref().unwrap());
+    } else {
+        info!("Governance: offline");
+    }
 
-    info!("RECALL control plane starting on {}", args.bind_addr);
-    info!("RECALL HTTP REST API starting on {}", args.http_addr);
+    let app_state = std::sync::Arc::new(state::AppState::new(AppStateConfig {
+        sui_rpc_url:           args.sui_rpc_url,
+        policy_object_id:      args.governance_policy_id,
+        record_object_id:      args.governance_record_id,
+        walrus_publisher_url:  walrus_publisher,
+        walrus_aggregator_url: walrus_aggregator,
+    })?);
 
-    // Spawn the Axum HTTP server on a separate task.
+    info!("RECALL control plane  gRPC={}", args.bind_addr);
+    info!("RECALL REST API        HTTP={}", args.http_addr);
+
     let http_state = app_state.clone();
-    let http_addr = args.http_addr;
+    let http_addr  = args.http_addr;
     tokio::spawn(async move {
-        let router = http::router(http_state);
+        let router   = http::router(http_state);
         let listener = tokio::net::TcpListener::bind(http_addr).await
             .expect("failed to bind HTTP listener");
-        axum::serve(listener, router).await
-            .expect("HTTP server error");
+        axum::serve(listener, router).await.expect("HTTP server error");
     });
 
     Server::builder()

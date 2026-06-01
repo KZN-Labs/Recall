@@ -8,54 +8,69 @@ use recall_receipt::store::ReceiptStore;
 use recall_registry::RegistryStore;
 use recall_transport::subscribe::SubscribeHub;
 use sui_governance::SuiGovernanceClient;
+use walrus_memory::WalrusMemoryBackend;
+
+use crate::workspace_store::WorkspaceStore;
 
 /// Shared application state, wrapped in Arc for service handlers.
 pub struct AppState {
-    /// Control-plane's own keypair — it is an agent with extra privileges.
-    pub cp_keypair: RecallKeypair,
-    pub passport_store: PassportStore,
+    pub cp_keypair:       RecallKeypair,
+    pub passport_store:   PassportStore,
     pub capability_store: CapabilityStore,
-    pub receipt_store: ReceiptStore,
-    pub memory_store: MemoryStore,
-    pub conflict_store: ConflictStore,
-    pub registry_store: RegistryStore,
-    pub subscribe_hub: SubscribeHub,
-    /// On-chain governance client.
-    /// Defaults to offline mode; configure with Sui RPC URL for production.
-    pub governance: SuiGovernanceClient,
-    pub enforcement: crate::enforcement::EnforcementEngine,
+    pub receipt_store:    ReceiptStore,
+    pub memory_store:     MemoryStore,
+    pub conflict_store:   ConflictStore,
+    pub registry_store:   RegistryStore,
+    pub subscribe_hub:    SubscribeHub,
+    pub governance:       SuiGovernanceClient,
+    pub enforcement:      crate::enforcement::EnforcementEngine,
+    /// Walrus memory backend — Some when a publisher URL is configured.
+    pub walrus:           Option<WalrusMemoryBackend>,
+    /// Explicit workspace registry (created via CreateWorkspace or auto-registered on write).
+    pub workspace_store:  WorkspaceStore,
+}
+
+pub struct AppStateConfig {
+    pub sui_rpc_url:          Option<String>,
+    pub policy_object_id:     Option<String>,
+    pub record_object_id:     Option<String>,
+    /// Walrus publisher URL. If None, memory is not written to Walrus.
+    /// Set to walrus_memory::WALRUS_TESTNET_PUBLISHER for testnet.
+    pub walrus_publisher_url: Option<String>,
+    /// Walrus aggregator URL.
+    pub walrus_aggregator_url: Option<String>,
 }
 
 impl AppState {
-    /// Create application state.
-    ///
-    /// `sui_rpc_url` — if Some, the governance client will call the Sui node
-    /// at that URL. If None, offline (local) rule evaluation is used.
-    pub fn new(
-        sui_rpc_url: Option<String>,
-        policy_object_id: Option<String>,
-        record_object_id: Option<String>,
-    ) -> Result<Self> {
-        let governance = match sui_rpc_url {
+    pub fn new(cfg: AppStateConfig) -> Result<Self> {
+        let governance = match cfg.sui_rpc_url {
             Some(url) => SuiGovernanceClient::new(
                 url,
-                policy_object_id.unwrap_or_default(),
-                record_object_id.unwrap_or_default(),
+                cfg.policy_object_id.unwrap_or_default(),
+                cfg.record_object_id.unwrap_or_default(),
             ),
             None => SuiGovernanceClient::offline(),
         };
 
+        let walrus = cfg.walrus_publisher_url.map(|pub_url| {
+            let agg_url = cfg.walrus_aggregator_url
+                .unwrap_or_else(|| walrus_memory::WALRUS_TESTNET_AGGREGATOR.to_string());
+            WalrusMemoryBackend::new(&agg_url, &pub_url)
+        });
+
         Ok(Self {
-            cp_keypair: RecallKeypair::generate(),
-            passport_store: PassportStore::default(),
+            cp_keypair:       RecallKeypair::generate(),
+            passport_store:   PassportStore::default(),
             capability_store: CapabilityStore::default(),
-            receipt_store: ReceiptStore::default(),
-            memory_store: MemoryStore::default(),
-            conflict_store: ConflictStore::default(),
-            registry_store: RegistryStore::default(),
-            subscribe_hub: SubscribeHub::default(),
+            receipt_store:    ReceiptStore::default(),
+            memory_store:     MemoryStore::default(),
+            conflict_store:   ConflictStore::default(),
+            registry_store:   RegistryStore::default(),
+            subscribe_hub:    SubscribeHub::default(),
             governance,
-            enforcement: crate::enforcement::EnforcementEngine::default(),
+            enforcement:      crate::enforcement::EnforcementEngine::default(),
+            walrus,
+            workspace_store:  WorkspaceStore::default(),
         })
     }
 }

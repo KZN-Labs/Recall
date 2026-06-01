@@ -18,7 +18,9 @@ recall-receipt = { path = "../recall-receipt" }
 recall-memory = { path = "../recall-memory" }
 recall-conflict = { path = "../recall-conflict" }
 recall-registry = { path = "../recall-registry" }
-sui-governance = { path = "../../backends/sui-governance" }
+sui-governance   = { path = "../../backends/sui-governance" }
+walrus-memory    = { path = "../../backends/walrus-memory" }
+seal-encryption  = { path = "../../backends/seal-encryption" }
 recall-transport = { path = "../recall-transport" }
 tokio = { workspace = true }
 tonic = { workspace = true }

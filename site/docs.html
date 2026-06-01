@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RECALL — Documentation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #000;
+  --fg: #fff;
+  --grey: #555;
+  --dimgrey: #333;
+  --lightgrey: #888;
+  --sidebar-w: 200px;
+  --font-head: 'Bebas Neue', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.7;
+  cursor: crosshair;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: repeating-linear-gradient(
+    transparent 0,
+    transparent 1px,
+    rgba(255,255,255,0.015) 1px,
+    rgba(255,255,255,0.015) 2px
+  );
+  background-size: 100% 2px;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+a { color: var(--fg); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Top nav ── */
+.topnav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  border-bottom: 1px solid var(--dimgrey);
+  background: var(--bg);
+  z-index: 100;
+  height: 52px;
+  display: flex;
+  align-items: center;
+}
+
+.topnav-inner {
+  width: 100%;
+  padding: 0 32px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+
+.topnav .logo {
+  font-family: var(--font-head);
+  font-size: 22px;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.topnav .links {
+  display: flex;
+  gap: 24px;
+  font-size: 12px;
+  color: var(--lightgrey);
+}
+
+.topnav .links a { color: var(--lightgrey); }
+.topnav .links a:hover { color: var(--fg); }
+
+/* ── Layout ── */
+.layout {
+  display: flex;
+  min-height: 100vh;
+  padding-top: 52px;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  position: fixed;
+  top: 52px;
+  left: 0;
+  width: var(--sidebar-w);
+  height: calc(100vh - 52px);
+  border-right: 1px solid var(--dimgrey);
+  overflow-y: auto;
+  padding: 32px 0;
+  flex-shrink: 0;
+}
+
+.sidebar nav a {
+  display: block;
+  padding: 7px 24px;
+  font-size: 12px;
+  color: var(--lightgrey);
+  letter-spacing: 0.05em;
+  border-left: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.sidebar nav a:hover,
+.sidebar nav a.active {
+  color: var(--fg);
+  border-left-color: var(--fg);
+  text-decoration: none;
+}
+
+/* ── Content ── */
+.content {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  max-width: 900px;
+  padding: 64px 48px;
+}
+
+/* ── Sections ── */
+.doc-section {
+  margin-bottom: 80px;
+  padding-bottom: 80px;
+  border-bottom: 1px solid var(--dimgrey);
+}
+
+.doc-section:last-child { border-bottom: none; }
+
+.section-title {
+  font-family: var(--font-head);
+  font-size: 42px;
+  letter-spacing: 0.02em;
+  margin-bottom: 32px;
+}
+
+p {
+  color: var(--lightgrey);
+  font-size: 13px;
+  line-height: 1.9;
+  margin-bottom: 16px;
+  max-width: 680px;
+}
+
+p strong { color: var(--fg); font-weight: 500; }
+
+/* ── Steps ── */
+.steps { list-style: none; counter-reset: steps; margin: 0 0 0 0; }
+
+.steps li {
+  counter-increment: steps;
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  font-size: 13px;
+  color: var(--lightgrey);
+}
+
+.steps li::before {
+  content: counter(steps);
+  font-family: var(--font-head);
+  font-size: 24px;
+  color: var(--grey);
+  line-height: 1;
+  flex-shrink: 0;
+  width: 24px;
+  padding-top: 2px;
+}
+
+.steps li code {
+  display: block;
+  color: var(--fg);
+  font-size: 12px;
+  border: 1px solid var(--dimgrey);
+  padding: 8px 14px;
+  margin-top: 6px;
+  background: #050505;
+}
+
+/* ── Method blocks ── */
+.method {
+  border: 1px solid var(--dimgrey);
+  margin-bottom: 24px;
+  transition: border-color 0.2s;
+}
+
+.method:hover { border-color: var(--fg); }
+
+.method-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--dimgrey);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.method-name {
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.method-badge {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--grey);
+  border: 1px solid var(--dimgrey);
+  padding: 2px 8px;
+}
+
+.method-body {
+  padding: 20px;
+}
+
+.method-desc {
+  font-size: 12px;
+  color: var(--lightgrey);
+  margin-bottom: 14px;
+}
+
+.code-block {
+  background: #050505;
+  border: 1px solid var(--dimgrey);
+  padding: 16px 20px;
+  font-size: 12px;
+  overflow-x: auto;
+  transition: border-color 0.2s;
+}
+
+.code-block:hover { border-color: var(--fg); }
+
+.code-block pre { color: var(--lightgrey); white-space: pre; }
+
+.code-block .kw   { color: #fff; }
+.code-block .str  { color: #aaa; }
+.code-block .cmt  { color: #555; font-style: italic; }
+
+/* ── CLI table ── */
+.cli-table { width: 100%; border-collapse: collapse; margin-bottom: 32px; }
+
+.cli-table th {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--grey);
+  text-align: left;
+  border-bottom: 1px solid var(--dimgrey);
+  padding: 8px 0;
+}
+
+.cli-table td {
+  font-size: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #1a1a1a;
+  vertical-align: top;
+}
+
+.cli-table td:first-child { color: var(--fg); padding-right: 24px; white-space: nowrap; }
+.cli-table td:nth-child(2) { color: var(--grey); padding-right: 24px; font-size: 11px; }
+.cli-table td:last-child { color: var(--lightgrey); }
+
+.cli-output {
+  background: #050505;
+  border: 1px solid var(--dimgrey);
+  padding: 10px 14px;
+  font-size: 11px;
+  color: var(--grey);
+  margin-top: 6px;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* ── ASCII arch ── */
+.ascii-block {
+  border: 1px solid var(--dimgrey);
+  padding: 28px 32px;
+  background: #050505;
+  font-size: 12px;
+  color: var(--grey);
+  overflow-x: auto;
+  margin-bottom: 32px;
+  transition: border-color 0.2s;
+}
+
+.ascii-block:hover { border-color: var(--fg); }
+
+/* ── Layer list ── */
+.layer-list { list-style: none; }
+
+.layer-list li {
+  border-left: 2px solid var(--dimgrey);
+  padding: 12px 0 12px 24px;
+  font-size: 13px;
+  color: var(--lightgrey);
+}
+
+.layer-list li strong { color: var(--fg); display: block; margin-bottom: 2px; }
+
+/* ── Contract block ── */
+.contract {
+  border: 1px solid var(--dimgrey);
+  margin-bottom: 24px;
+}
+
+.contract-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--dimgrey);
+  font-family: var(--font-head);
+  font-size: 20px;
+  letter-spacing: 0.05em;
+}
+
+.contract-body {
+  padding: 20px;
+}
+
+.contract-item {
+  font-size: 12px;
+  color: var(--lightgrey);
+  padding: 6px 0;
+  border-bottom: 1px solid #111;
+  display: flex;
+  gap: 16px;
+}
+
+.contract-item:last-child { border-bottom: none; }
+
+.contract-item .kind {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--grey);
+  width: 72px;
+  flex-shrink: 0;
+}
+
+/* ── Roadmap ── */
+.roadmap-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+}
+
+.roadmap-col {
+  border-left: 1px solid var(--dimgrey);
+  padding: 0 32px 0 24px;
+}
+
+.roadmap-col:first-child { border-left: none; padding-left: 0; }
+
+.roadmap-col h3 {
+  font-family: var(--font-head);
+  font-size: 22px;
+  letter-spacing: 0.05em;
+  margin-bottom: 20px;
+  color: var(--fg);
+}
+
+.roadmap-col ul {
+  list-style: none;
+  font-size: 12px;
+  color: var(--lightgrey);
+}
+
+.roadmap-col ul li {
+  padding: 5px 0;
+  border-bottom: 1px solid #111;
+}
+
+.roadmap-col ul li::before {
+  content: '▸ ';
+  color: var(--grey);
+}
+
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .content { margin-left: 0; padding: 32px 20px; }
+  .roadmap-grid { grid-template-columns: 1fr; gap: 32px; }
+  .roadmap-col { border-left: none; border-top: 1px solid var(--dimgrey); padding: 24px 0 0; }
+  .roadmap-col:first-child { border-top: none; padding-top: 0; }
+}
+</style>
+</head>
+<body>
+
+<!-- Top nav -->
+<header class="topnav">
+  <div class="topnav-inner">
+    <a href="index.html" class="logo">RECALL</a>
+    <nav class="links">
+      <a href="index.html">Home</a>
+      <a href="https://github.com/KZN-Labs/Recall" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <nav>
+      <a href="#overview">Overview</a>
+      <a href="#quickstart">Quickstart</a>
+      <a href="#sdk">SDK Reference</a>
+      <a href="#cli">CLI Reference</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#contracts">Move Contracts</a>
+      <a href="#roadmap">Roadmap</a>
+    </nav>
+  </aside>
+
+  <!-- Main content -->
+  <main class="content">
+
+    <!-- ── Overview ── -->
+    <section class="doc-section" id="overview">
+      <h1 class="section-title">Overview</h1>
+
+      <p>AI agents are stateless by default. Every session begins from scratch — no memory of what was decided last week, no awareness of what another agent resolved yesterday, no trail of evidence for the decisions that matter most. At scale, multi-agent systems become incoherent: different agents hold contradictory beliefs about the same entity, and no one can explain why.</p>
+
+      <p>RECALL is a <strong>shared memory operating system</strong> for AI agents. It provides a persistent, governed memory layer that agents read from and write to across sessions, deployments, and model versions. Every write is validated against a workspace policy, every decision produces a tamper-evident receipt, and every contradiction is surfaced as a conflict before it causes harm.</p>
+
+      <p>RECALL is built on <strong>Walrus</strong> for permanent decentralized blob storage, <strong>Sui</strong> for on-chain governance and receipt anchoring, and <strong>Seal</strong> for threshold encryption that ties memory access to on-chain identity. The control plane runs as a gRPC + REST service that integrates with any agent framework via a Python or TypeScript SDK.</p>
+    </section>
+
+    <!-- ── Quickstart ── -->
+    <section class="doc-section" id="quickstart">
+      <h1 class="section-title">Quickstart</h1>
+
+      <ol class="steps">
+        <li>
+          <div><strong style="color:var(--fg)">Start the control plane</strong><br>Runs gRPC on :9090 and REST on :8080</div>
+          <code>cargo run -p recall-control-plane</code>
+        </li>
+        <li>
+          <div><strong style="color:var(--fg)">Seed demo data</strong><br>Creates workspaces, agents, memory entries, and conflicts</div>
+          <code>python demo_seed.py</code>
+        </li>
+        <li>
+          <div><strong style="color:var(--fg)">Stream live writes</strong><br>Follow memory events in real time with conflict markers</div>
+          <code>recall logs --follow</code>
+        </li>
+        <li>
+          <div><strong style="color:var(--fg)">Check unresolved conflicts</strong><br>List all contradictions that need human or automated resolution</div>
+          <code>recall failures</code>
+        </li>
+        <li>
+          <div><strong style="color:var(--fg)">Audit an entity's memory trail</strong><br>Full receipt chain with conflict annotations</div>
+          <code>recall why --entity sarah@email.com</code>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ── SDK Reference ── -->
+    <section class="doc-section" id="sdk">
+      <h1 class="section-title">SDK Reference</h1>
+
+      <p>Install the Python SDK: <code style="color:var(--fg); font-size:12px;">pip install recall-sdk</code></p>
+
+      <!-- connect() -->
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">recall.connect()</span>
+          <span class="method-badge">CONNECTION</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">Initialize a connection to the RECALL control plane.</div>
+          <div class="code-block"><pre><span class="kw">import</span> recall
+
+client = recall.connect(
+    endpoint=<span class="str">"localhost:9090"</span>,
+    workspace=<span class="str">"ws_customer-ops"</span>,
+    passport_id=<span class="str">"pp_fraud_agent_001"</span>,
+)</pre></div>
+        </div>
+      </div>
+
+      <!-- workspace.read() -->
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">client.workspace.read(entity)</span>
+          <span class="method-badge">READ</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">Read all memory entries for an entity in the current workspace.</div>
+          <div class="code-block"><pre>entries = client.workspace.read(<span class="str">"sarah@email.com"</span>)
+
+<span class="kw">for</span> e <span class="kw">in</span> entries:
+    print(e.event, e.data, e.agent_id, e.timestamp)</pre></div>
+        </div>
+      </div>
+
+      <!-- workspace.write() -->
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">client.workspace.write(entity, event, data)</span>
+          <span class="method-badge">WRITE</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">Write a memory entry. Triggers governance check, conflict detection, and receipt emission.</div>
+          <div class="code-block"><pre>receipt = client.workspace.write(
+    entity=<span class="str">"sarah@email.com"</span>,
+    event=<span class="str">"fraud_assessment"</span>,
+    data={
+        <span class="str">"flagged"</span>: <span class="kw">True</span>,
+        <span class="str">"score"</span>: 0.91,
+        <span class="str">"reason"</span>: <span class="str">"velocity_anomaly"</span>,
+    },
+    tags=[<span class="str">"pii"</span>, <span class="str">"fraud"</span>],
+    trust_level=2,
+)
+
+print(receipt.id)          <span class="cmt"># cryptographic receipt ID</span>
+print(receipt.walrus_blob) <span class="cmt"># permanent Walrus blob ID</span></pre></div>
+        </div>
+      </div>
+
+      <!-- recall.handoff() -->
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">client.recall.handoff(target_agent, entity)</span>
+          <span class="method-badge">HANDOFF</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">Package all memory for an entity into a handoff capsule and deliver it to another agent. The capsule is encrypted with Seal and stored on Walrus.</div>
+          <div class="code-block"><pre>capsule = client.recall.handoff(
+    target_agent=<span class="str">"escalation-agent"</span>,
+    entity=<span class="str">"sarah@email.com"</span>,
+    include_conflicts=<span class="kw">True</span>,
+)
+
+print(capsule.blob_id)  <span class="cmt"># Walrus blob ID for the capsule</span>
+print(capsule.receipt)  <span class="cmt"># anchored handoff receipt</span></pre></div>
+        </div>
+      </div>
+
+      <!-- recall.publish() -->
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">client.recall.publish(name, version)</span>
+          <span class="method-badge">REGISTRY</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">Publish the current workspace's memory as a versioned package in the RECALL registry.</div>
+          <div class="code-block"><pre>pkg = client.recall.publish(
+    name=<span class="str">"fraud-detection-agent"</span>,
+    version=<span class="str">"1.0"</span>,
+    category=<span class="str">"fraud"</span>,
+    description=<span class="str">"Fraud detection memory from 6 months production"</span>,
+)
+
+print(pkg.name, pkg.memory_count)
+<span class="cmt"># fraud-detection-agent@1.0  847 memories</span></pre></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── CLI Reference ── -->
+    <section class="doc-section" id="cli">
+      <h1 class="section-title">CLI Reference</h1>
+
+      <table class="cli-table">
+        <thead>
+          <tr>
+            <th>COMMAND</th>
+            <th>FLAGS</th>
+            <th>DESCRIPTION</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>recall logs</td>
+            <td>--follow, --workspace</td>
+            <td>Stream memory write events. Conflicts are marked inline with a ← CONFLICT marker.</td>
+          </tr>
+          <tr>
+            <td>recall failures</td>
+            <td>--workspace</td>
+            <td>List all unresolved conflict records across the workspace.</td>
+          </tr>
+          <tr>
+            <td>recall why</td>
+            <td>--entity, --workspace</td>
+            <td>Show the full receipt chain for an entity with inline conflict and escalation annotations.</td>
+          </tr>
+          <tr>
+            <td>recall inspect</td>
+            <td>&lt;receipt-id&gt;</td>
+            <td>Display full detail for a single receipt: agent, timestamp, Walrus blob, Sui tx, Seal status.</td>
+          </tr>
+          <tr>
+            <td>recall agents</td>
+            <td>--workspace</td>
+            <td>List all agents in the workspace with their role, trust level, enforcement stage, and reputation score.</td>
+          </tr>
+          <tr>
+            <td>recall rollback</td>
+            <td>--workspace, --to</td>
+            <td>Roll back all memory entries written after the given Unix timestamp. Emits a rollback receipt.</td>
+          </tr>
+          <tr>
+            <td>recall export</td>
+            <td>--entity, --format</td>
+            <td>Export a PDF or JSON audit trail for an entity. Includes memory entries, receipts, Merkle proofs.</td>
+          </tr>
+          <tr>
+            <td>recall workspace list</td>
+            <td>—</td>
+            <td>List all workspaces with memory count, agent count, conflict count, and receipt count.</td>
+          </tr>
+          <tr>
+            <td>recall workspace create</td>
+            <td>--name, --topology</td>
+            <td>Create a new named workspace with the given topology mode.</td>
+          </tr>
+          <tr>
+            <td>recall workspace add-agent</td>
+            <td>--workspace, --agent, --role</td>
+            <td>Add an agent to a workspace with the specified role (READER, WRITER, SUPERVISOR, ADMIN).</td>
+          </tr>
+          <tr>
+            <td>recall registry list</td>
+            <td>--category</td>
+            <td>Browse published memory packages in the RECALL registry.</td>
+          </tr>
+          <tr>
+            <td>recall registry inspect</td>
+            <td>&lt;name@version&gt;</td>
+            <td>Show package metadata: author, description, memory count, Merkle root, import count.</td>
+          </tr>
+          <tr>
+            <td>recall registry import</td>
+            <td>&lt;name@version&gt;, --workspace</td>
+            <td>Import a registry package into the current workspace. Issues a passport for the agent.</td>
+          </tr>
+          <tr>
+            <td>recall registry publish</td>
+            <td>--name, --version, --category</td>
+            <td>Publish the current workspace's memory as a versioned registry package.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p style="margin-bottom:16px; font-size:12px;"><strong>Example output — recall why</strong></p>
+      <div class="cli-output">$ recall why --entity sarah@email.com
+
+Receipt trail for sarah@email.com in ws_customer-ops:
+
+  [14:21:03] support-agent    MEMORY_WRITE  approved_refund=true      trust=3  ✓
+  [14:22:11] fraud-agent      MEMORY_WRITE  flagged_for_fraud=true    trust=2  ✓
+  [14:22:14] CONFLICT ⚡ fraud-agent.flagged_for_fraud vs support-agent.approved_refund
+  [14:22:19] risk-agent       MEMORY_WRITE  global_risk_score=HIGH    trust=2  ✓
+
+Receipts anchored: Sui tx 8kPqR...mNzT3  (block 4821093)</div>
+    </section>
+
+    <!-- ── Architecture ── -->
+    <section class="doc-section" id="architecture">
+      <h1 class="section-title">Architecture</h1>
+
+      <pre class="ascii-block">
+  ┌──────────────────────────────────────────────┐
+  │              SDK LAYER                       │
+  │  Python SDK · TypeScript SDK · gRPC clients  │
+  └──────────────────┬───────────────────────────┘
+                     │
+  ┌──────────────────▼───────────────────────────┐
+  │          RECALL CONTROL PLANE                │
+  │          gRPC :9090  REST :8080              │
+  │                                              │
+  │  AdmissionService    CapabilityService       │
+  │  MemoryService       WorkspaceService        │
+  │  HandoffService      InspectorService        │
+  │  RegistryService     EnvelopeService         │
+  └────┬──────────┬──────────────┬───────────────┘
+       │          │              │
+  ┌────▼───┐ ┌────▼────┐ ┌──────▼──────┐
+  │WALRUS  │ │  SUI    │ │   SEAL      │
+  │        │ │         │ │             │
+  │MemWal  │ │receipt  │ │ threshold   │
+  │blob    │ │anchor   │ │ encryption  │
+  │storage │ │ Move    │ │ key server  │
+  └────────┘ └─────────┘ └─────────────┘
+</pre>
+
+      <ul class="layer-list">
+        <li>
+          <strong>SDK Layer</strong>
+          Python and TypeScript clients that wrap the gRPC and REST interfaces. Agents use these to read/write memory, request handoffs, and query receipts.
+        </li>
+        <li>
+          <strong>Control Plane</strong>
+          The core RECALL service. Validates writes against governance rules (evaluated against the Sui WorkspacePolicy object), detects conflicts between concurrent writes, emits cryptographically signed receipts, and coordinates Walrus storage and Sui anchoring.
+        </li>
+        <li>
+          <strong>Walrus (MemWal)</strong>
+          All memory entries are serialized as protobuf and stored as blobs on Walrus testnet. The blob ID is attached to every memory entry and receipt, providing permanent, verifiable storage independent of the control plane.
+        </li>
+        <li>
+          <strong>Sui (Receipt Anchoring)</strong>
+          Receipt batches are Merkle-rooted and committed on-chain via the <code style="font-size:12px; color:var(--fg)">receipt_anchor::commit_anchor()</code> Move function. The on-chain event is the ground truth for audit purposes.
+        </li>
+        <li>
+          <strong>Seal (Threshold Encryption)</strong>
+          Memory blobs are encrypted using workspace-scoped keys managed by the Seal key server. Decryption requires the agent to hold a valid passport that has been admitted to the workspace policy on Sui.
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── Move Contracts ── -->
+    <section class="doc-section" id="contracts">
+      <h1 class="section-title">Move Contracts</h1>
+
+      <div class="contract">
+        <div class="contract-header">workspace_governance</div>
+        <div class="contract-body">
+          <p style="margin-bottom:16px; max-width:none;">Owns all write-access rules. Called via <code style="font-size:12px; color:var(--fg)">sui_devInspectTransactionBlock</code> before any memory write is processed.</p>
+          <div class="contract-item">
+            <span class="kind">STRUCT</span>
+            <span>WorkspacePolicy — topology mode, min trust level, constitution version, agent capabilities map</span>
+          </div>
+          <div class="contract-item">
+            <span class="kind">STRUCT</span>
+            <span>AgentEnforcementRecord — deny count, enforcement stage (NONE → DETECT → COACH → QUARANTINE → EVICT), reputation score</span>
+          </div>
+          <div class="contract-item">
+            <span class="kind">FUN</span>
+            <span>check_write_access(policy, record, trust_level, role, tags, scope, has_supervisor) → bool</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="contract">
+        <div class="contract-header">receipt_anchor</div>
+        <div class="contract-body">
+          <p style="margin-bottom:16px; max-width:none;">Commits Merkle roots of receipt batches on-chain. Each commit creates an immutable audit event.</p>
+          <div class="contract-item">
+            <span class="kind">STRUCT</span>
+            <span>AnchorRegistry — shared object, stores committed anchor records indexed by merkle root</span>
+          </div>
+          <div class="contract-item">
+            <span class="kind">FUN</span>
+            <span>commit_anchor(merkle_root, walrus_blob_id, workspace_id, receipt_count, registry, clock)</span>
+          </div>
+          <div class="contract-item">
+            <span class="kind">EVENT</span>
+            <span>AnchorCommitted — { merkle_root, walrus_blob_id, workspace_id, receipt_count, committed_at }</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="contract">
+        <div class="contract-header">workspace_registry</div>
+        <div class="contract-body">
+          <p style="margin-bottom:16px; max-width:none;">Manages workspace ownership and capability tokens. Grants and revokes agent access via transferable capability objects.</p>
+          <div class="contract-item">
+            <span class="kind">STRUCT</span>
+            <span>WorkspaceOwnerCap — transferable capability, owner has full workspace admin rights</span>
+          </div>
+          <div class="contract-item">
+            <span class="kind">STRUCT</span>
+            <span>AgentCapability — role-scoped, non-transferable capability issued to agent passport</span>
+          </div>
+          <div class="contract-item">
+            <span class="kind">FUN</span>
+            <span>create_workspace(name, topology, clock) → (Workspace, WorkspaceOwnerCap)</span>
+          </div>
+          <div class="contract-item">
+            <span class="kind">FUN</span>
+            <span>grant_agent_capability(workspace, passport_id, role, owner_cap)</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Roadmap ── -->
+    <section class="doc-section" id="roadmap">
+      <h1 class="section-title">Roadmap</h1>
+
+      <div class="roadmap-grid">
+        <div class="roadmap-col">
+          <h3>v0.1 · Hackathon</h3>
+          <ul>
+            <li>Control plane (gRPC + REST)</li>
+            <li>Walrus blob storage</li>
+            <li>Sui receipt anchoring</li>
+            <li>Seal AES-256-GCM fallback</li>
+            <li>Conflict detection engine</li>
+            <li>Governance (Sui Move)</li>
+            <li>Python SDK</li>
+            <li>CLI (logs, why, failures)</li>
+            <li>RECALL Registry v0</li>
+            <li>demo_seed.py</li>
+          </ul>
+        </div>
+        <div class="roadmap-col">
+          <h3>v0.2 · Post-Hackathon</h3>
+          <ul>
+            <li>Seal full threshold integration</li>
+            <li>TypeScript SDK</li>
+            <li>Auto conflict resolution rules</li>
+            <li>Merkle proof generation</li>
+            <li>PDF export with proofs</li>
+            <li>Walrus Site dashboard</li>
+            <li>Registry search &amp; versioning</li>
+            <li>Agent reputation scoring</li>
+            <li>Supervisor countersign flow</li>
+            <li>WebSocket streaming</li>
+          </ul>
+        </div>
+        <div class="roadmap-col">
+          <h3>v1.0 · Production</h3>
+          <ul>
+            <li>Multi-region control plane</li>
+            <li>Formal governance audit</li>
+            <li>GDPR right-to-erasure</li>
+            <li>Cross-workspace handoffs</li>
+            <li>zkProof receipt compression</li>
+            <li>On-chain conflict arbitration</li>
+            <li>LangChain / LlamaIndex hooks</li>
+            <li>Enterprise SLA SLOs</li>
+            <li>Registry marketplace</li>
+            <li>Mainnet deployment</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+// Active sidebar link tracking
+(function() {
+  var links = document.querySelectorAll('.sidebar nav a');
+  var sections = [];
+
+  links.forEach(function(link) {
+    var id = link.getAttribute('href').replace('#', '');
+    var el = document.getElementById(id);
+    if (el) sections.push({ el: el, link: link });
+  });
+
+  function onScroll() {
+    var scrollY = window.scrollY + 120;
+    var active = null;
+    sections.forEach(function(s) {
+      if (s.el.offsetTop <= scrollY) active = s;
+    });
+    links.forEach(function(l) { l.classList.remove('active'); });
+    if (active) active.link.classList.add('active');
+  }
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+})();
+</script>
+</body>
+</html>

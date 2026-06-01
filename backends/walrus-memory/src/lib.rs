@@ -1,65 +1,94 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use prost::Message;
 use recall_core::ids::WalrusBlobId;
-use recall_crypto::sha256_hex;
 use recall_proto::memory as mem_proto;
 
-/// MemWal integration: read/write memory blobs to Walrus.
-///
-/// Production: replace with the real MemWal SDK client.
-/// Walrus is append-only — every blob written is permanent.
-#[allow(dead_code)]
+pub const WALRUS_TESTNET_PUBLISHER:  &str = "https://publisher.walrus-testnet.walrus.space";
+pub const WALRUS_TESTNET_AGGREGATOR: &str = "https://aggregator.walrus-testnet.walrus.space";
+
+/// MemWal integration: read/write memory blobs on Walrus.
 pub struct WalrusMemoryBackend {
-    /// Walrus aggregator endpoint, e.g. "https://aggregator.walrus-testnet.walrus.space"
     aggregator_url: String,
-    /// Walrus publisher endpoint
-    publisher_url: String,
-    client: reqwest::Client,
+    publisher_url:  String,
+    client:         reqwest::Client,
 }
 
 impl WalrusMemoryBackend {
     pub fn new(aggregator_url: &str, publisher_url: &str) -> Self {
         Self {
-            aggregator_url: aggregator_url.to_string(),
-            publisher_url: publisher_url.to_string(),
-            client: reqwest::Client::new(),
+            aggregator_url: aggregator_url.trim_end_matches('/').to_string(),
+            publisher_url:  publisher_url.trim_end_matches('/').to_string(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap(),
         }
     }
 
-    /// Write a memory entry blob to Walrus. Returns the assigned blob ID.
-    /// Every call to this function results in a permanent Walrus blob.
-    pub async fn write_memory_entry(
-        &self,
-        entry: &mem_proto::MemoryEntry,
-    ) -> Result<WalrusBlobId> {
+    pub fn testnet() -> Self {
+        Self::new(WALRUS_TESTNET_AGGREGATOR, WALRUS_TESTNET_PUBLISHER)
+    }
+
+    /// Write a memory entry to Walrus. Returns the permanent blob ID.
+    pub async fn write_memory_entry(&self, entry: &mem_proto::MemoryEntry) -> Result<WalrusBlobId> {
         let mut buf = Vec::new();
         entry.encode(&mut buf)?;
-
-        // In production: POST buf to Walrus publisher endpoint.
-        // The blob ID is returned in the response.
-        // Here we derive a deterministic pseudo blob ID for testing.
-        let blob_id = format!("0x{}", sha256_hex(&buf));
-
-        Ok(WalrusBlobId(blob_id))
+        self.put_blob(&buf).await
     }
 
-    /// Read a memory entry blob from Walrus by blob ID.
-    pub async fn read_memory_entry(&self, blob_id: &WalrusBlobId) -> Result<mem_proto::MemoryEntry> {
-        // In production: GET from Walrus aggregator endpoint.
-        Err(anyhow::anyhow!(
-            "Walrus backend not connected — blob_id: {}",
-            blob_id.0
-        ))
-    }
-
-    /// Write a handoff capsule blob to Walrus.
-    pub async fn write_capsule(
-        &self,
-        capsule: &mem_proto::HandoffCapsule,
-    ) -> Result<WalrusBlobId> {
+    /// Write a handoff capsule to Walrus.
+    pub async fn write_capsule(&self, capsule: &mem_proto::HandoffCapsule) -> Result<WalrusBlobId> {
         let mut buf = Vec::new();
         capsule.encode(&mut buf)?;
-        let blob_id = format!("0x{}", sha256_hex(&buf));
+        self.put_blob(&buf).await
+    }
+
+    /// Read and decode a memory entry from Walrus by blob ID.
+    pub async fn read_memory_entry(&self, blob_id: &WalrusBlobId) -> Result<mem_proto::MemoryEntry> {
+        let bytes = self.get_blob(&blob_id.0).await?;
+        Ok(mem_proto::MemoryEntry::decode(bytes.as_slice())?)
+    }
+
+    // ── HTTP primitives ───────────────────────────────────────────────────────
+
+    async fn put_blob(&self, data: &[u8]) -> Result<WalrusBlobId> {
+        let resp = self.client
+            .put(format!("{}/v1/blobs", self.publisher_url))
+            .header("Content-Type", "application/octet-stream")
+            .body(data.to_vec())
+            .send()
+            .await
+            .map_err(|e| anyhow!("Walrus PUT failed: {e}"))?;
+
+        let status = resp.status();
+        let body: serde_json::Value = resp.json().await
+            .map_err(|e| anyhow!("Walrus response parse failed: {e}"))?;
+
+        if !status.is_success() {
+            return Err(anyhow!("Walrus publisher returned {status}: {body}"));
+        }
+
+        // Handle both newlyCreated and alreadyCertified responses
+        let blob_id = body["newlyCreated"]["blobObject"]["blobId"]
+            .as_str()
+            .or_else(|| body["alreadyCertified"]["blobId"].as_str())
+            .ok_or_else(|| anyhow!("Walrus response missing blobId: {body}"))?
+            .to_string();
+
         Ok(WalrusBlobId(blob_id))
+    }
+
+    async fn get_blob(&self, blob_id: &str) -> Result<Vec<u8>> {
+        let resp = self.client
+            .get(format!("{}/v1/{}", self.aggregator_url, blob_id))
+            .send()
+            .await
+            .map_err(|e| anyhow!("Walrus GET failed: {e}"))?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow!("Walrus aggregator returned {}: {blob_id}", resp.status()));
+        }
+
+        Ok(resp.bytes().await?.to_vec())
     }
 }

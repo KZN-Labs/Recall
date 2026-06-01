@@ -388,7 +388,34 @@ async fn write_memory(
         ..Default::default()
     };
 
+    // ── Walrus write (if configured) ──────────────────────────────────────────
+    let walrus_blob_id: Option<String> = if let Some(walrus) = &state.walrus {
+        match walrus.write_memory_entry(&entry).await {
+            Ok(blob) => {
+                tracing::info!("Walrus blob stored: {}", blob.0);
+                Some(blob.0)
+            }
+            Err(e) => {
+                tracing::warn!("Walrus write failed (continuing without blob): {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Attach blob ref to entry before storing locally
+    let mut entry = entry;
+    if let Some(ref bid) = walrus_blob_id {
+        entry.walrus_blob = Some(common_proto::WalrusBlobRef {
+            blob_id: bid.clone(),
+        });
+    }
+
     state.memory_store.insert(entry.clone());
+
+    // Auto-register workspace so list_workspaces reflects writes before create() is called.
+    state.workspace_store.ensure_exists(&workspace_id);
 
     // Conflict detection.
     let existing = state.memory_store.get_by_entity(&workspace_id, &entity);
@@ -417,10 +444,14 @@ async fn write_memory(
     // Broadcast to streaming subscribers.
     state.subscribe_hub.publish(&workspace_id, receipt);
 
-    (StatusCode::CREATED, Json(serde_json::json!({
+    let mut resp = serde_json::json!({
         "memory_id":  entry_id,
         "receipt_id": receipt_id,
-    })))
+    });
+    if let Some(bid) = walrus_blob_id {
+        resp["walrus_blob_id"] = serde_json::Value::String(bid);
+    }
+    (StatusCode::CREATED, Json(resp))
 }
 
 async fn get_conflicts(
@@ -466,8 +497,22 @@ async fn list_registry(
 // ── New endpoints for CLI ─────────────────────────────────────────────────────
 
 async fn list_workspaces(State(state): State<Arc<AppState>>) -> Json<Vec<serde_json::Value>> {
-    let ws_ids = state.memory_store.list_workspaces();
-    let out = ws_ids.iter().map(|ws| {
+    // Merge explicit workspace_store with workspaces that appear in memory writes
+    // so demo_seed.py flows (which write before calling create) are reflected.
+    let mut ws_ids: std::collections::HashSet<String> = state
+        .workspace_store
+        .list()
+        .into_iter()
+        .filter_map(|ws| ws.id.map(|id| id.value))
+        .collect();
+    for id in state.memory_store.list_workspaces() {
+        ws_ids.insert(id);
+    }
+
+    let mut ws_list: Vec<String> = ws_ids.into_iter().collect();
+    ws_list.sort();
+
+    let out = ws_list.iter().map(|ws| {
         let entries   = state.memory_store.list_by_workspace(ws);
         let receipts  = state.receipt_store.list_by_workspace(ws);
         let conflicts = state.conflict_store.list_pending(ws);

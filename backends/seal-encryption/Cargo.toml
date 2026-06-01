@@ -12,3 +12,6 @@ anyhow = { workspace = true }
 tokio = { workspace = true }
 hex = { workspace = true }
 base64 = { workspace = true }
+ring  = { workspace = true }
+reqwest = { workspace = true }
+tracing = { workspace = true }
