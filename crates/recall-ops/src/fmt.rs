@@ -35,6 +35,7 @@ pub fn receipt_id(id: &str) -> String {
     format!("#{}", &id[..id.len().min(14)]).truecolor(90, 90, 160).to_string()
 }
 
+#[allow(dead_code)]
 pub fn conflict_id(id: &str) -> String {
     format!("⚠  {}", &id[..id.len().min(14)]).yellow().to_string()
 }

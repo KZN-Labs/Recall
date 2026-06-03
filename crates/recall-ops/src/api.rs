@@ -14,6 +14,7 @@ pub struct WorkspaceInfo {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct AgentInfo {
     pub agent_id:    String,
     pub role:        String,
@@ -82,6 +83,7 @@ pub struct RollbackRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct RollbackResult {
     pub workspace_id:        String,
     pub entries_removed:     usize,
@@ -120,6 +122,7 @@ impl ApiClient {
         self.get("/workspaces").await
     }
 
+    #[allow(dead_code)]
     pub async fn workspace_stats(&self, ws: &str) -> Result<WorkspaceInfo> {
         // stats endpoint returns a slightly different shape — map it
         let v: serde_json::Value = self.get(&format!("/stats/{}", encode(ws))).await?;
