@@ -16,6 +16,7 @@
   --dim:      #333;
   --mid:      #555;
   --light:    #888;
+  --read:     #aaa;
   --head:     'Bebas Neue', sans-serif;
   --mono:     'IBM Plex Mono', monospace;
 }
@@ -31,7 +32,7 @@ body {
   cursor: crosshair;
 }
 
-/* Scanline */
+/* Scanline overlay */
 body::before {
   content: '';
   position: fixed;
@@ -55,11 +56,11 @@ a:hover { text-decoration: underline; }
 }
 
 /* ── NAV ── */
-nav {
+nav.top {
   border-bottom: 1px solid var(--dim);
-  padding: 18px 0;
+  padding: 16px 0;
 }
-nav .inner {
+nav.top .inner {
   max-width: 900px;
   margin: 0 auto;
   padding: 0 32px;
@@ -68,13 +69,18 @@ nav .inner {
   align-items: center;
 }
 .nav-logo {
+  height: 32px;
+  width: auto;
+  display: block;
+}
+.nav-logo-fallback {
   font-family: var(--head);
   font-size: 22px;
   letter-spacing: 0.04em;
 }
 .nav-links {
   display: flex;
-  gap: 28px;
+  gap: 26px;
   font-size: 12px;
   letter-spacing: 0.08em;
   color: var(--light);
@@ -84,7 +90,7 @@ nav .inner {
 
 /* ── HERO ── */
 .hero {
-  padding: 96px 0 80px;
+  padding: 96px 0 84px;
   border-bottom: 1px solid var(--dim);
 }
 
@@ -128,6 +134,12 @@ nav .inner {
   margin-bottom: 44px;
 }
 
+.cta-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
 .cta {
   display: inline-block;
   border: 1px solid var(--fg);
@@ -145,7 +157,7 @@ nav .inner {
 
 /* ── SECTIONS ── */
 section {
-  padding: 80px 0;
+  padding: 84px 0;
   border-bottom: 1px solid var(--dim);
 }
 
@@ -153,7 +165,16 @@ section {
   font-family: var(--head);
   font-size: 52px;
   letter-spacing: 0.02em;
-  margin-bottom: 48px;
+  margin-bottom: 36px;
+  line-height: 1;
+}
+
+.lead {
+  font-size: 13px;
+  color: var(--read);
+  line-height: 2;
+  max-width: 680px;
+  margin-bottom: 56px;
 }
 
 /* ── REVEAL ── */
@@ -171,40 +192,62 @@ section {
   gap: 0;
 }
 .problem-col {
-  padding: 0 32px 0 24px;
+  padding: 0 32px 0 28px;
   border-left: 1px solid var(--dim);
 }
 .problem-col:first-child { border-left: none; padding-left: 0; }
 .problem-col h3 {
   font-family: var(--head);
-  font-size: 30px;
+  font-size: 32px;
   letter-spacing: 0.04em;
-  margin-bottom: 14px;
+  margin-bottom: 18px;
 }
 .problem-col p {
   font-size: 12px;
   color: var(--light);
-  line-height: 1.9;
+  line-height: 2;
 }
 
-/* ── ARCHITECTURE DIAGRAM ── */
-.arch-wrap {
-  width: 100%;
+/* ── FEATURE GRID (2x2) ── */
+.feat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.feat-block {
+  border: 1px solid var(--dim);
+  padding: 28px;
+  transition: border-color 0.18s;
+}
+.feat-block:hover { border-color: var(--fg); }
+
+.feat-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--fg);
+  margin-bottom: 14px;
+  font-weight: 500;
+}
+.feat-block p {
+  font-size: 12px;
+  color: var(--light);
+  line-height: 2;
 }
 
+/* ── ARCH DIAGRAM ── */
+.arch-wrap { width: 100%; }
 .arch-row {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 12px;
 }
-
 .arch-box {
   border: 1px solid var(--dim);
   padding: 18px 20px;
   transition: border-color 0.18s;
 }
 .arch-box:hover { border-color: var(--fg); }
-
 .arch-box-tag {
   font-family: var(--head);
   font-size: 24px;
@@ -223,21 +266,18 @@ section {
   margin-top: 6px;
   letter-spacing: 0.05em;
 }
-
 .arch-svg {
   display: block;
   width: 100%;
   height: 44px;
   overflow: visible;
 }
-
 .arch-cp {
   border: 1px solid var(--mid);
   background: #060606;
   transition: border-color 0.18s;
 }
 .arch-cp:hover { border-color: var(--fg); }
-
 .arch-cp-head {
   border-bottom: 1px solid var(--dim);
   padding: 16px 22px;
@@ -278,7 +318,6 @@ section {
   overflow-x: auto;
 }
 .terminal:hover { border-color: var(--fg); }
-
 .term-bar {
   border-bottom: 1px solid var(--dim);
   padding: 7px 16px;
@@ -297,13 +336,29 @@ section {
   letter-spacing: 0.1em;
   margin-left: 4px;
 }
-
 .term-body { padding: 16px 20px; }
 .term-cmd  { color: var(--fg); font-size: 12px; }
 .term-cmd::before { content: '$ '; color: var(--mid); }
 .term-out  { color: var(--light); font-size: 11px; margin-top: 10px; white-space: pre; line-height: 1.7; }
 .term-hi   { color: #fff; }
 .term-warn { color: #ccc; }
+
+/* ── WALRUS SECTION ── */
+.walrus-prose {
+  font-size: 13px;
+  color: var(--read);
+  line-height: 2;
+  max-width: 720px;
+  margin-bottom: 40px;
+}
+.walrus-tag {
+  font-size: 18px;
+  color: var(--fg);
+  letter-spacing: 0.06em;
+  padding: 20px 0;
+  border-top: 1px solid var(--dim);
+  border-bottom: 1px solid var(--dim);
+}
 
 /* ── CODE PAIR ── */
 .code-pair {
@@ -345,20 +400,27 @@ footer {
   padding: 44px 0;
   font-size: 11px;
   color: var(--mid);
+}
+.foot-inner {
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 16px;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 32px;
 }
+.foot-links { display: flex; gap: 24px; }
 footer a { color: var(--mid); }
 footer a:hover { color: var(--fg); }
 
 /* ── RESPONSIVE ── */
-@media (max-width: 680px) {
+@media (max-width: 720px) {
   .problem-grid { grid-template-columns: 1fr; }
-  .problem-col  { border-left:none; border-top:1px solid var(--dim); padding:24px 0 0; margin-top:24px; }
+  .problem-col  { border-left:none; border-top:1px solid var(--dim); padding:28px 0 0; margin-top:28px; }
   .problem-col:first-child { border-top:none; padding-top:0; margin-top:0; }
+  .feat-grid    { grid-template-columns: 1fr; }
   .code-pair    { grid-template-columns: 1fr; }
   .arch-row     { grid-template-columns: 1fr; }
   .arch-cp-body { grid-template-columns: 1fr; }
@@ -368,7 +430,7 @@ footer a:hover { color: var(--fg); }
 </head>
 <body>
 
-<!-- SVG noise filter -->
+<!-- SVG noise filter for hero title -->
 <svg style="display:none" aria-hidden="true">
   <filter id="noise">
     <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" result="n"/>
@@ -377,11 +439,16 @@ footer a:hover { color: var(--fg); }
 </svg>
 
 <!-- NAV -->
-<nav>
+<nav class="top">
   <div class="inner">
-    <span class="nav-logo">RECALL</span>
+    <!-- drop logo.png into site/assets/ -->
+    <a href="index.html" aria-label="RECALL home">
+      <img src="assets/logo.png" alt="RECALL" class="nav-logo"
+           onerror="this.outerHTML='<span class=&quot;nav-logo-fallback&quot;>RECALL</span>'">
+    </a>
     <div class="nav-links">
       <a href="docs.html">Docs</a>
+      <a href="writing.html">Writing</a>
       <a href="https://github.com/KZN-Labs/Recall" target="_blank" rel="noopener">GitHub</a>
     </div>
   </div>
@@ -396,7 +463,10 @@ footer a:hover { color: var(--fg); }
       Every write governed. Every action receipted. Every conflict detected.<br>
       Built on Walrus &nbsp;·&nbsp; Anchored on Sui &nbsp;·&nbsp; Secured by Seal
     </div>
-    <a href="docs.html" class="cta reveal">Read the docs &rarr;</a>
+    <div class="cta-row reveal">
+      <a href="docs.html"    class="cta">Read the docs &rarr;</a>
+      <a href="writing.html" class="cta">Read the article &rarr;</a>
+    </div>
   </div>
 </section>
 
@@ -404,31 +474,97 @@ footer a:hover { color: var(--fg); }
 <section>
   <div class="wrap">
     <div class="sec-label reveal">AGENTS HAVE AMNESIA</div>
+    <p class="lead reveal">
+      Building one AI agent is trivially easy now. Getting a group of them to
+      actually remember anything, agree on anything, or be auditable afterward —
+      that's the unsolved part.
+    </p>
     <div class="problem-grid">
       <div class="problem-col reveal">
         <h3>THEY FORGET</h3>
-        <p>Every session starts blank. Six months of learned patterns — customer preferences, escalation rules, edge cases — gone. The agent asks the same questions it already answered last quarter.</p>
+        <p>
+          Every session starts blank. An agent that spent six months learning
+          your customers, your edge cases, your patterns — gone the moment the
+          context window closes. The next session starts from zero. You're not
+          running an agent. You're running a very expensive stateless function.
+        </p>
       </div>
       <div class="problem-col reveal">
         <h3>THEY CONTRADICT</h3>
-        <p>Support approves the refund. Fraud flags the customer. Neither agent knows what the other decided. The system is coherent on paper and incoherent in practice.</p>
+        <p>
+          Support approves the credit. Fraud flags the same customer two
+          minutes later. Billing processes it anyway. None of them knew what
+          the others did. Nobody wrote it down. The customer calls back
+          tomorrow with the same problem. This is the default behavior of
+          every multi-agent system in production today.
+        </p>
       </div>
       <div class="problem-col reveal">
         <h3>NOTHING IS AUDITABLE</h3>
-        <p>The decision was made. The context is gone. The model weights changed. Good luck explaining to a regulator why your agent approved a transaction at 2am on a Tuesday.</p>
+        <p>
+          When an agent makes a wrong decision, the answer to "why did it do
+          that?" is almost always: we don't know. The memory lived in a
+          context window, got flushed, and is gone. In regulated industries
+          this is becoming a compliance crisis. Regulators are starting to
+          ask for decision trails. Current architectures cannot provide them.
+        </p>
       </div>
     </div>
   </div>
 </section>
 
-<!-- HOW IT WORKS -->
+<!-- THE MISSING PIECE — 2x2 feature grid -->
+<section>
+  <div class="wrap">
+    <div class="sec-label reveal">THE MISSING PIECE</div>
+    <div class="feat-grid">
+      <div class="feat-block reveal">
+        <div class="feat-label">SHARED WORKSPACES</div>
+        <p>
+          Multiple agents, one memory context. Every agent reads the workspace
+          before responding. Every agent writes to it after acting. When agent
+          B acts, it knows what agent A already did. No more silos. No more
+          agents working blind.
+        </p>
+      </div>
+      <div class="feat-block reveal">
+        <div class="feat-label">CONFLICT DETECTION</div>
+        <p>
+          When two agents write contradictory signals about the same entity,
+          RECALL catches it immediately — before damage, not after. The
+          higher-trust agent's signal takes precedence for auto-resolution.
+          Nothing is silently overwritten. Every conflict is logged. Every
+          resolution is receipted.
+        </p>
+      </div>
+      <div class="feat-block reveal">
+        <div class="feat-label">CRYPTOGRAPHIC RECEIPTS</div>
+        <p>
+          Every memory write produces a content-addressed, signed, append-only
+          receipt. Receipt ID is the SHA-256 of the canonical serialization.
+          When someone asks "why did the agent make that decision" — you walk
+          the receipt DAG. The answer is always there.
+        </p>
+      </div>
+      <div class="feat-block reveal">
+        <div class="feat-label">THE REGISTRY</div>
+        <p>
+          There is no npm for agent intelligence. RECALL's registry fixes this.
+          Publish your agent's accumulated memory once. Any team imports it
+          and starts with full context — permanently stored on Walrus,
+          cryptographically immutable. The quality guarantee is on-chain.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS — diagram -->
 <section>
   <div class="wrap">
     <div class="sec-label reveal">HOW RECALL WORKS</div>
-
     <div class="arch-wrap reveal">
 
-      <!-- Agents row -->
       <div class="arch-row">
         <div class="arch-box">
           <span class="arch-box-tag">AGENT A</span>
@@ -444,7 +580,6 @@ footer a:hover { color: var(--fg); }
         </div>
       </div>
 
-      <!-- Merge: 3 lines → 1 center line -->
       <svg class="arch-svg" viewBox="0 0 840 44" preserveAspectRatio="none">
         <line x1="140" y1="0"  x2="140" y2="22" stroke="#3a3a3a" stroke-width="1"/>
         <line x1="420" y1="0"  x2="420" y2="22" stroke="#3a3a3a" stroke-width="1"/>
@@ -456,7 +591,6 @@ footer a:hover { color: var(--fg); }
         <circle cx="700" cy="22" r="2.5" fill="#555"/>
       </svg>
 
-      <!-- Control plane -->
       <div class="arch-cp">
         <div class="arch-cp-head">
           <span class="arch-cp-title">RECALL CONTROL PLANE</span>
@@ -470,7 +604,6 @@ footer a:hover { color: var(--fg); }
         </div>
       </div>
 
-      <!-- Fan-out: 1 center line → 3 lines -->
       <svg class="arch-svg" viewBox="0 0 840 44" preserveAspectRatio="none">
         <line x1="420" y1="0"  x2="420" y2="22" stroke="#3a3a3a" stroke-width="1"/>
         <line x1="140" y1="22" x2="700" y2="22" stroke="#3a3a3a" stroke-width="1"/>
@@ -482,7 +615,6 @@ footer a:hover { color: var(--fg); }
         <circle cx="700" cy="22" r="2.5" fill="#555"/>
       </svg>
 
-      <!-- Services row -->
       <div class="arch-row">
         <div class="arch-box">
           <span class="arch-box-tag">WALRUS</span>
@@ -571,12 +703,34 @@ ws_customer-ops       sarah@email.com       <span class="term-warn">⚠ UNRESOLV
   </div>
 </section>
 
+<!-- WHY WALRUS -->
+<section>
+  <div class="wrap">
+    <div class="sec-label reveal">MEMORY MUST BE VERIFIABLE</div>
+    <p class="walrus-prose reveal">
+      Every design decision in RECALL flows from one principle: memory must be
+      verifiable. When an agent makes a decision, the memory that informed that
+      decision must exist as a permanent, tamper-proof record. A database entry
+      can be modified. A log can be altered. A blob on Walrus cannot. Every
+      memory write in RECALL is a permanent Walrus blob. Every receipt batch
+      has its Merkle root anchored on Sui. No agent data goes on-chain — only
+      hashes. But those hashes mean any party can independently verify the
+      full decision trail without trusting the control plane.
+    </p>
+    <div class="walrus-tag reveal">
+      Built on Walrus Memory &nbsp;·&nbsp; Anchored on Sui &nbsp;·&nbsp; Governed by Move &nbsp;·&nbsp; Secured by Seal
+    </div>
+  </div>
+</section>
+
 <!-- REGISTRY -->
 <section>
   <div class="wrap">
     <div class="sec-label reveal">NPM FOR AGENT KNOWLEDGE</div>
     <p class="reveal" style="font-size:13px;color:var(--light);margin-bottom:32px;line-height:1.9;max-width:580px;">
-      Publish versioned memory packages from production deployments. Import them into new workspaces — agents start with institutional knowledge, not a blank slate.
+      Publish versioned memory packages from production deployments. Import
+      them into new workspaces — agents start with institutional knowledge,
+      not a blank slate.
     </p>
     <div class="code-pair reveal">
       <div class="code-block">
@@ -616,9 +770,12 @@ ws_customer-ops       sarah@email.com       <span class="term-warn">⚠ UNRESOLV
 
 <!-- FOOTER -->
 <footer>
-  <div class="wrap" style="display:flex;justify-content:space-between;width:100%;flex-wrap:wrap;gap:12px;">
+  <div class="foot-inner">
     <span>RECALL &mdash; Sui Overflow 2026 &nbsp;·&nbsp; Walrus Track</span>
-    <a href="https://github.com/KZN-Labs/Recall" target="_blank" rel="noopener">github.com/KZN-Labs/Recall</a>
+    <div class="foot-links">
+      <a href="docs.html">Docs</a>
+      <a href="writing.html">Writing</a>
+    </div>
   </div>
 </footer>
 
