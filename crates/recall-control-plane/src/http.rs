@@ -419,13 +419,15 @@ async fn write_memory(
 
     // Conflict detection.
     let existing = state.memory_store.get_by_entity(&workspace_id, &entity);
-    let conflict_anchor = ContentHash("conflict_placeholder".into());
     for existing_entry in &existing {
         if existing_entry.id != entry.id
             && recall_conflict::detect_conflict(existing_entry, &entry)
         {
+            let conflict_receipt_id = ContentHash(recall_crypto::sha256_hex(
+                format!("{}:{}", existing_entry.id, entry.id).as_bytes(),
+            ));
             let conflict = recall_conflict::build_conflict_record(
-                existing_entry, &entry, &conflict_anchor,
+                existing_entry, &entry, &conflict_receipt_id,
             );
             state.conflict_store.insert(conflict);
         }
@@ -600,6 +602,52 @@ async fn publish_registry(
     }
 }
 
+// ── Handoff ───────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct HandoffBody {
+    from_agent_id: String,
+    to_agent_id:   String,
+    entity:        String,
+    workspace_id:  String,
+}
+
+async fn handoff(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<HandoffBody>,
+) -> impl IntoResponse {
+    // Snapshot all memory entries for this entity.
+    let entries = state.memory_store.get_by_entity_all(&body.entity);
+    let snapshot: Vec<MemoryEntryJson> = entries.iter().map(entry_to_json).collect();
+
+    // Emit handoff.capsule.create receipt.
+    let cp_agent   = AgentId("00000000-0000-0000-0000-000000000001".to_string());
+    let cp_passport = ContentHash("cp_passport".to_string());
+    let ws = WorkspaceId(body.workspace_id.clone());
+    let receipt = ReceiptBuilder::new(action_kind::HANDOFF_CAPSULE_CREATE, &ws, &cp_passport, &cp_agent)
+        .build(&state.cp_keypair);
+    let receipt_id = receipt.id.as_ref().map(|h| h.hex.clone()).unwrap_or_default();
+    let _ = state.receipt_store.append(receipt.clone());
+    state.subscribe_hub.publish(&body.workspace_id, receipt);
+
+    let hash = recall_crypto::sha256_hex(
+        format!("{}:{}:{}", body.from_agent_id, body.to_agent_id, body.entity).as_bytes(),
+    );
+    let capsule_id = format!("capsule_{}", &hash[..16]);
+    let created_at = chrono::Utc::now().to_rfc3339();
+
+    (StatusCode::CREATED, Json(serde_json::json!({
+        "capsule_id":       capsule_id,
+        "from_agent_id":    body.from_agent_id,
+        "to_agent_id":      body.to_agent_id,
+        "entity":           body.entity,
+        "workspace_id":     body.workspace_id,
+        "memory_snapshot":  snapshot,
+        "created_at":       created_at,
+        "receipt_id":       receipt_id,
+    })))
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -616,6 +664,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/stats/:workspace_id",                 get(workspace_stats))
         .route("/conflicts/:workspace_id",             get(get_conflicts))
         .route("/registry",                            get(list_registry).post(publish_registry))
+        .route("/handoff",                             axum::routing::post(handoff))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

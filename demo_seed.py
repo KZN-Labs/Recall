@@ -10,10 +10,15 @@ Usage:
 import asyncio
 import sys
 import argparse
+import os
 
 sys.path.insert(0, "sdks/python/src")
 
 from recall.client import RecallClient
+
+MEMWAL_CONFIGURED = bool(
+    os.environ.get("MEMWAL_PRIVATE_KEY") and os.environ.get("MEMWAL_ACCOUNT_ID")
+)
 
 async def seed(endpoint: str) -> None:
     recall = RecallClient(http_endpoint=endpoint)
@@ -99,6 +104,13 @@ async def seed(endpoint: str) -> None:
     print()
     print("  Expected conflict: credit_offered ↔ flag_suspicious for sarah@email.com")
     print("  Receipts issued for every write — visible in Inspector stats bar.")
+    print()
+    if MEMWAL_CONFIGURED:
+        print("  MemWal (Walrus Memory): ENABLED — memory entries stored as permanent blobs")
+        print("  Blobs are verifiable at: https://aggregator.walrus-testnet.walrus.space")
+    else:
+        print("  MemWal (Walrus Memory): set MEMWAL_PRIVATE_KEY + MEMWAL_ACCOUNT_ID to enable")
+        print("  Sign up at: https://memory.walrus.xyz/")
 
 
 if __name__ == "__main__":

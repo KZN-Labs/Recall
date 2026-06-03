@@ -2,6 +2,7 @@ use std::sync::Arc;
 use tonic::{Request, Response, Status};
 
 use recall_core::ids::{AgentId, ContentHash, WorkspaceId};
+use tracing::{info, warn};
 use recall_proto::controlplane::v1::{
     memory_service_server::MemoryService,
     GetConflictsRequest, GetConflictsResponse,
@@ -138,18 +139,38 @@ impl MemoryService for MemoryServiceImpl {
         let memory_id = entry.id.clone();
         self.state.memory_store.insert(entry.clone());
 
+        // Auto-register workspace so HTTP list reflects gRPC writes too.
+        self.state.workspace_store.ensure_exists(&workspace_id.0);
+
+        // ── Walrus blob storage (if configured) ───────────────────────────────
+        let walrus_blob_id = if let Some(walrus) = &self.state.walrus {
+            match walrus.write_memory_entry(&entry).await {
+                Ok(blob) => {
+                    info!("Walrus blob stored: {}", blob.0);
+                    Some(blob.0)
+                }
+                Err(e) => {
+                    warn!("Walrus write failed (continuing): {e}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         // Detect conflicts against existing entries for the same entity.
         let existing = self
             .state
             .memory_store
             .get_by_entity(&workspace_id.0, &entry.entity);
 
-        let conflict_receipt_id = ContentHash("conflict_placeholder".to_string());
-
         for existing_entry in &existing {
             if existing_entry.id != entry.id
                 && recall_conflict::detect_conflict(existing_entry, &entry)
             {
+                let conflict_receipt_id = ContentHash(recall_crypto::sha256_hex(
+                    format!("{}:{}", existing_entry.id, entry.id).as_bytes(),
+                ));
                 let conflict = recall_conflict::build_conflict_record(
                     existing_entry,
                     &entry,
@@ -186,7 +207,7 @@ impl MemoryService for MemoryServiceImpl {
         Ok(Response::new(WriteMemoryResponse {
             memory_id,
             receipt_id: Some(common_proto::Hash { hex: receipt_id }),
-            walrus_blob: None,
+            walrus_blob: walrus_blob_id.map(|id| common_proto::WalrusBlobRef { blob_id: id }),
         }))
     }
 

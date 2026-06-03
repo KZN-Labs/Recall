@@ -111,6 +111,31 @@ python demo_seed.py
 
 ---
 
+## MemWal (Walrus Memory)
+
+RECALL uses [MemWal](https://memory.walrus.xyz/) — the official Walrus Memory SDK —
+as the persistent storage layer for agent memory entries.
+
+Every memory write is stored as a permanent, verifiable blob via MemWal.
+Every read query uses MemWal's semantic search to surface relevant context.
+
+To enable MemWal in your RECALL deployment:
+
+1. Create an account at https://memory.walrus.xyz/
+2. Generate a delegate key for your agent
+3. Set environment variables:
+
+```bash
+export MEMWAL_PRIVATE_KEY="your-ed25519-private-key"
+export MEMWAL_ACCOUNT_ID="your-memwal-account-id"
+```
+
+RECALL works without these — memory is still stored and governed by the control plane —
+but with them, every write becomes a permanent Walrus blob with a verifiable ID,
+and reads gain semantic search over the full memory history.
+
+---
+
 ## CLI
 
 The `recall` CLI is the primary interface for inspecting and managing multi-agent memory.
@@ -265,4 +290,4 @@ contracts/sui/
 
 ## Stack
 
-Rust · Python · TypeScript · Walrus · MemWal · Seal · Sui · Move
+Rust · Python · TypeScript · Walrus · **MemWal (SDK)** · Seal · Sui · Move

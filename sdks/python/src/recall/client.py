@@ -12,6 +12,7 @@ gRPC (port 9090) is used by the `recall` CLI.
 """
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -19,6 +20,7 @@ from typing import Any, Optional
 import httpx
 
 from .crypto import RecallKeypair, sha256_hex
+from .memwal_client import RecallMemWalClient
 from .models.memory import MemoryEntry, HandoffCapsule
 from .models.receipt import Receipt
 
@@ -40,8 +42,11 @@ class WorkspaceConfig:
 
 
 class ReadResult:
-    def __init__(self, entries: list[MemoryEntry]):
+    def __init__(self, entries: list[MemoryEntry], memwal_context: list[str] | None = None):
         self.entries = entries
+        # Semantic context retrieved from MemWal (Walrus Memory).
+        # Non-empty when MEMWAL_PRIVATE_KEY / MEMWAL_ACCOUNT_ID are configured.
+        self.memwal_context: list[str] = memwal_context or []
 
     def __iter__(self):
         return iter(self.entries)
@@ -67,6 +72,7 @@ class Workspace:
         workspace_name: str,
         config: WorkspaceConfig,
         keypair: RecallKeypair,
+        memwal: RecallMemWalClient,
     ):
         self._workspace_id = workspace_id
         self._workspace_name = workspace_name
@@ -76,6 +82,7 @@ class Workspace:
         self._passport_id = sha256_hex(
             f"{config.agent}:{keypair.public_key_bytes().hex()}".encode()
         )
+        self._memwal = memwal
 
     async def read(self, entity: str) -> ReadResult:
         """Read all memory entries for an entity in this workspace."""
@@ -110,7 +117,11 @@ class Workspace:
                     timestamp=ts,
                 )
             )
-        return ReadResult(entries=entries)
+
+        # ── MemWal semantic retrieval ─────────────────────────────────────────
+        memwal_context = await self._memwal.retrieve(query=f"memories for {entity}")
+
+        return ReadResult(entries=entries, memwal_context=memwal_context)
 
     async def write(
         self,
@@ -137,6 +148,7 @@ class Workspace:
         if metadata:
             body["metadata"] = metadata
 
+        receipt_id = ""
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(url, json=body)
@@ -149,6 +161,14 @@ class Workspace:
                 f"{self._workspace_id}:{entity}:{event}".encode()
             )
 
+        # ── MemWal (Walrus Memory) permanent blob storage ─────────────────────
+        value_str = value if isinstance(value, str) else json.dumps(value, default=str)
+        memwal_text = (
+            f"{event}: {value_str} "
+            f"(entity: {entity}, agent: {self._agent_id}, tags: {tags or []})"
+        )
+        memwal_blob_id = await self._memwal.store(memwal_text)
+
         return Receipt(
             id=receipt_id,
             action_kind="memory.write",
@@ -156,6 +176,7 @@ class Workspace:
             actor_passport_id=self._passport_id,
             actor_agent_id=self._agent_id,
             timestamp=datetime.now(tz=timezone.utc),
+            memwal_blob_id=memwal_blob_id or None,
         )
 
 
@@ -164,6 +185,7 @@ class RecallClient:
 
     def __init__(self, http_endpoint: str = "http://localhost:8080"):
         self._http_endpoint = http_endpoint
+        self._memwal = RecallMemWalClient()
 
     async def connect(
         self,
@@ -191,6 +213,7 @@ class RecallClient:
             workspace_name=workspace_name,
             config=config,
             keypair=keypair,
+            memwal=self._memwal,
         )
 
     async def handoff(
@@ -201,16 +224,42 @@ class RecallClient:
         workspace_id: Optional[str] = None,
     ) -> HandoffCapsule:
         """Hand off entity memory from one agent to another."""
-        capsule_id = sha256_hex(f"{from_agent}:{to_agent}:{entity}".encode())
-        return HandoffCapsule(
-            id=f"capsule_{capsule_id[:16]}",
-            from_agent_id=from_agent,
-            to_agent_id=to_agent,
-            entity=entity,
-            workspace_id=workspace_id or "ws_default",
-            memory_snapshot=[],
-            created_at=datetime.now(tz=timezone.utc),
-        )
+        url = f"{self._http_endpoint}/handoff"
+        body = {
+            "from_agent_id": from_agent,
+            "to_agent_id": to_agent,
+            "entity": entity,
+            "workspace_id": workspace_id or "ws_default",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(url, json=body)
+                resp.raise_for_status()
+                result = resp.json()
+                return HandoffCapsule(
+                    id=result.get(
+                        "capsule_id",
+                        f"capsule_{sha256_hex(f'{from_agent}:{to_agent}:{entity}'.encode())[:16]}",
+                    ),
+                    from_agent_id=from_agent,
+                    to_agent_id=to_agent,
+                    entity=entity,
+                    workspace_id=workspace_id or "ws_default",
+                    memory_snapshot=[],
+                    created_at=datetime.now(tz=timezone.utc),
+                )
+        except Exception as exc:
+            print(f"[recall] handoff failed ({exc}) — returning local capsule")
+            capsule_id = sha256_hex(f"{from_agent}:{to_agent}:{entity}".encode())
+            return HandoffCapsule(
+                id=f"capsule_{capsule_id[:16]}",
+                from_agent_id=from_agent,
+                to_agent_id=to_agent,
+                entity=entity,
+                workspace_id=workspace_id or "ws_default",
+                memory_snapshot=[],
+                created_at=datetime.now(tz=timezone.utc),
+            )
 
     async def publish(
         self,
@@ -220,10 +269,23 @@ class RecallClient:
         workspace_id: Optional[str] = None,
     ) -> dict[str, Any]:
         """Publish a workspace memory profile to the RECALL Registry."""
-        return {
+        url = f"{self._http_endpoint}/registry"
+        body = {
             "name": name,
             "version": version,
             "description": description,
-            "published_at": datetime.now(tz=timezone.utc).isoformat(),
-            "immutable": True,
         }
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(url, json=body)
+                resp.raise_for_status()
+                return resp.json()  # type: ignore[no-any-return]
+        except Exception as exc:
+            print(f"[recall] publish failed ({exc}) — returning local profile")
+            return {
+                "name": name,
+                "version": version,
+                "description": description,
+                "published_at": datetime.now(tz=timezone.utc).isoformat(),
+                "immutable": True,
+            }

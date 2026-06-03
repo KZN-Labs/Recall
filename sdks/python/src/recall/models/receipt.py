@@ -24,6 +24,7 @@ class Receipt(BaseModel):
     causal_predecessors: list[str] = Field(default_factory=list)
     evidence_digest: str = ""
     walrus_blob_id: Optional[str] = None
+    memwal_blob_id: Optional[str] = None
     seal_status: str = "UNSEALED"
     cost_annotation: Optional[CostAnnotation] = None
     deny_reason: str = ""

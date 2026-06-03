@@ -11,13 +11,13 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: #000;
-  --fg: #fff;
-  --grey: #555;
-  --dimgrey: #333;
-  --lightgrey: #888;
-  --font-head: 'Bebas Neue', sans-serif;
-  --font-mono: 'IBM Plex Mono', monospace;
+  --bg:       #000;
+  --fg:       #fff;
+  --dim:      #333;
+  --mid:      #555;
+  --light:    #888;
+  --head:     'Bebas Neue', sans-serif;
+  --mono:     'IBM Plex Mono', monospace;
 }
 
 html { scroll-behavior: smooth; }
@@ -25,22 +25,20 @@ html { scroll-behavior: smooth; }
 body {
   background: var(--bg);
   color: var(--fg);
-  font-family: var(--font-mono);
+  font-family: var(--mono);
   font-size: 14px;
   line-height: 1.7;
   cursor: crosshair;
 }
 
+/* Scanline */
 body::before {
   content: '';
   position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
+  inset: 0;
   background: repeating-linear-gradient(
-    transparent 0,
-    transparent 1px,
-    rgba(255,255,255,0.015) 1px,
-    rgba(255,255,255,0.015) 2px
+    transparent 0, transparent 1px,
+    rgba(255,255,255,0.018) 1px, rgba(255,255,255,0.018) 2px
   );
   background-size: 100% 2px;
   pointer-events: none;
@@ -50,21 +48,16 @@ body::before {
 a { color: var(--fg); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-.container {
+.wrap {
   max-width: 900px;
   margin: 0 auto;
   padding: 0 32px;
 }
 
-/* ── Noise filter ── */
-.noise-filter { display: none; }
-
-/* ── Navigation ── */
+/* ── NAV ── */
 nav {
-  border-bottom: 1px solid var(--dimgrey);
-  padding: 20px 0;
-  font-size: 12px;
-  letter-spacing: 0.1em;
+  border-bottom: 1px solid var(--dim);
+  padding: 18px 0;
 }
 nav .inner {
   max-width: 900px;
@@ -74,73 +67,75 @@ nav .inner {
   justify-content: space-between;
   align-items: center;
 }
-nav .logo {
-  font-family: var(--font-head);
+.nav-logo {
+  font-family: var(--head);
   font-size: 22px;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
 }
-nav .links { display: flex; gap: 32px; color: var(--lightgrey); }
-nav .links a { color: var(--lightgrey); }
-nav .links a:hover { color: var(--fg); }
+.nav-links {
+  display: flex;
+  gap: 28px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--light);
+}
+.nav-links a { color: var(--light); }
+.nav-links a:hover { color: var(--fg); text-decoration: none; }
 
-/* ── Hero ── */
+/* ── HERO ── */
 .hero {
-  padding: 100px 0 80px;
-  border-bottom: 1px solid var(--dimgrey);
+  padding: 96px 0 80px;
+  border-bottom: 1px solid var(--dim);
 }
 
-.hero-title {
-  font-family: var(--font-head);
-  font-size: clamp(100px, 18vw, 200px);
-  line-height: 0.9;
-  letter-spacing: -0.02em;
-  margin-bottom: 32px;
-  filter: url(#noise);
-  animation: glitch 4s infinite;
+.hero-recall {
+  font-family: var(--head);
+  font-size: clamp(96px, 19vw, 196px);
+  line-height: 0.88;
+  letter-spacing: -0.01em;
+  margin-bottom: 36px;
   display: inline-block;
+  animation: glitch 4s infinite;
+  filter: url(#noise);
 }
 
 @keyframes glitch {
-  0%, 94%, 100% { clip-path: none; transform: translate(0); }
-  95%  { clip-path: polygon(0 10%, 100% 10%, 100% 13%, 0 13%); transform: translate(-4px, 0); }
-  96%  { clip-path: polygon(0 40%, 100% 40%, 100% 45%, 0 45%); transform: translate(4px, 0); }
-  97%  { clip-path: polygon(0 70%, 100% 70%, 100% 74%, 0 74%); transform: translate(-3px, 0); }
-  98%  { clip-path: polygon(0 85%, 100% 85%, 100% 88%, 0 88%); transform: translate(2px, 0); }
-  99%  { clip-path: none; transform: translate(0); }
+  0%,93%,100% { clip-path: none; transform: translate(0,0); }
+  94% { clip-path: polygon(0 8%,100% 8%,100% 12%,0 12%);   transform: translate(-4px,0); }
+  95% { clip-path: polygon(0 42%,100% 42%,100% 47%,0 47%);  transform: translate(4px,0); }
+  96% { clip-path: polygon(0 68%,100% 68%,100% 72%,0 72%);  transform: translate(-3px,0); }
+  97% { clip-path: polygon(0 85%,100% 85%,100% 88%,0 88%);  transform: translate(2px,0); }
+  98% { clip-path: none; transform: translate(0,0); }
 }
 
-.hero-subtitle {
-  font-size: 18px;
-  color: var(--lightgrey);
-  margin-bottom: 40px;
-  min-height: 28px;
+.hero-sub {
+  font-size: 17px;
+  color: var(--light);
+  margin-bottom: 32px;
+  min-height: 26px;
+  letter-spacing: 0.01em;
 }
-
-.hero-subtitle::after {
+.hero-sub::after {
   content: '|';
   animation: blink 1s step-end infinite;
 }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-.hero-taglines {
+.hero-lines {
   font-size: 13px;
-  color: var(--grey);
-  line-height: 2;
-  margin-bottom: 48px;
+  color: var(--mid);
+  line-height: 2.1;
+  margin-bottom: 44px;
 }
 
 .cta {
   display: inline-block;
   border: 1px solid var(--fg);
-  padding: 12px 28px;
-  font-family: var(--font-mono);
-  font-size: 13px;
+  padding: 11px 28px;
+  font-family: var(--mono);
+  font-size: 12px;
   letter-spacing: 0.1em;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.12s, color 0.12s;
 }
 .cta:hover {
   background: var(--fg);
@@ -148,193 +143,271 @@ nav .links a:hover { color: var(--fg); }
   text-decoration: none;
 }
 
-/* ── Sections ── */
+/* ── SECTIONS ── */
 section {
   padding: 80px 0;
-  border-bottom: 1px solid var(--dimgrey);
+  border-bottom: 1px solid var(--dim);
 }
 
-.section-label {
-  font-family: var(--font-head);
-  font-size: 48px;
+.sec-label {
+  font-family: var(--head);
+  font-size: 52px;
   letter-spacing: 0.02em;
   margin-bottom: 48px;
 }
 
-/* ── Reveal animations ── */
+/* ── REVEAL ── */
 .reveal {
   opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
+  transform: translateY(18px);
+  transition: opacity 0.55s ease, transform 0.55s ease;
 }
-.reveal.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
+.reveal.vis { opacity: 1; transform: none; }
 
-/* ── Problem columns ── */
+/* ── PROBLEM ── */
 .problem-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 0;
 }
-
 .problem-col {
-  border-left: 1px solid var(--dimgrey);
   padding: 0 32px 0 24px;
+  border-left: 1px solid var(--dim);
 }
-
 .problem-col:first-child { border-left: none; padding-left: 0; }
-
 .problem-col h3 {
-  font-family: var(--font-head);
-  font-size: 28px;
-  letter-spacing: 0.05em;
-  margin-bottom: 16px;
-  color: var(--fg);
+  font-family: var(--head);
+  font-size: 30px;
+  letter-spacing: 0.04em;
+  margin-bottom: 14px;
+}
+.problem-col p {
+  font-size: 12px;
+  color: var(--light);
+  line-height: 1.9;
 }
 
-.problem-col p {
-  font-size: 13px;
-  color: var(--lightgrey);
+/* ── ARCHITECTURE DIAGRAM ── */
+.arch-wrap {
+  width: 100%;
+}
+
+.arch-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+.arch-box {
+  border: 1px solid var(--dim);
+  padding: 18px 20px;
+  transition: border-color 0.18s;
+}
+.arch-box:hover { border-color: var(--fg); }
+
+.arch-box-tag {
+  font-family: var(--head);
+  font-size: 24px;
+  letter-spacing: 0.05em;
+  display: block;
+  margin-bottom: 2px;
+}
+.arch-box-sub {
+  font-size: 11px;
+  color: var(--mid);
+  display: block;
+}
+.arch-box-detail {
+  font-size: 10px;
+  color: var(--dim);
+  margin-top: 6px;
+  letter-spacing: 0.05em;
+}
+
+.arch-svg {
+  display: block;
+  width: 100%;
+  height: 44px;
+  overflow: visible;
+}
+
+.arch-cp {
+  border: 1px solid var(--mid);
+  background: #060606;
+  transition: border-color 0.18s;
+}
+.arch-cp:hover { border-color: var(--fg); }
+
+.arch-cp-head {
+  border-bottom: 1px solid var(--dim);
+  padding: 16px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.arch-cp-title {
+  font-family: var(--head);
+  font-size: 26px;
+  letter-spacing: 0.04em;
+}
+.arch-cp-ports {
+  font-size: 11px;
+  color: var(--mid);
+  letter-spacing: 0.06em;
+}
+.arch-cp-body {
+  padding: 16px 22px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 40px;
+}
+.arch-cp-item {
+  font-size: 12px;
+  color: #777;
+}
+.arch-cp-item::before { content: '▸ '; color: var(--dim); }
+
+/* ── TERMINAL BLOCKS ── */
+.terminal {
+  background: #000;
+  border: 1px solid var(--dim);
+  margin-bottom: 12px;
+  transition: border-color 0.18s;
+  overflow-x: auto;
+}
+.terminal:hover { border-color: var(--fg); }
+
+.term-bar {
+  border-bottom: 1px solid var(--dim);
+  padding: 7px 16px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.term-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+.term-title {
+  font-size: 10px;
+  color: var(--mid);
+  letter-spacing: 0.1em;
+  margin-left: 4px;
+}
+
+.term-body { padding: 16px 20px; }
+.term-cmd  { color: var(--fg); font-size: 12px; }
+.term-cmd::before { content: '$ '; color: var(--mid); }
+.term-out  { color: var(--light); font-size: 11px; margin-top: 10px; white-space: pre; line-height: 1.7; }
+.term-hi   { color: #fff; }
+.term-warn { color: #ccc; }
+
+/* ── CODE PAIR ── */
+.code-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.code-block {
+  border: 1px solid var(--dim);
+  background: #050505;
+  transition: border-color 0.18s;
+}
+.code-block:hover { border-color: var(--fg); }
+.code-header {
+  border-bottom: 1px solid var(--dim);
+  padding: 8px 16px;
+  font-size: 10px;
+  color: var(--mid);
+  letter-spacing: 0.1em;
+}
+.code-body {
+  padding: 16px 20px;
+  font-size: 11px;
+  color: var(--light);
+  white-space: pre;
   line-height: 1.8;
 }
 
-/* ── ASCII diagram ── */
-.ascii-block {
-  border: 1px solid var(--dimgrey);
-  padding: 32px;
-  background: #050505;
-  font-size: 12px;
-  color: var(--grey);
-  overflow-x: auto;
-  transition: border-color 0.2s;
-}
-
-.ascii-block:hover { border-color: var(--fg); }
-
-/* ── Terminal blocks ── */
-.terminal {
-  background: #000;
-  border: 1px solid var(--dimgrey);
-  padding: 20px 24px;
-  font-size: 12px;
-  margin-bottom: 16px;
-  transition: border-color 0.2s;
-  overflow-x: auto;
-}
-
-.terminal:hover { border-color: var(--fg); }
-
-.terminal .prompt { color: var(--grey); }
-.terminal .cmd { color: var(--fg); }
-.terminal .output { color: var(--lightgrey); margin-top: 8px; white-space: pre; }
-.terminal .conflict { color: #fff; font-weight: 500; }
-
-/* ── Code side-by-side ── */
-.code-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.code-block {
-  border: 1px solid var(--dimgrey);
-  padding: 20px 24px;
-  font-size: 12px;
-  transition: border-color 0.2s;
-  background: #050505;
-}
-
-.code-block:hover { border-color: var(--fg); }
-
-.code-block .label {
-  font-size: 10px;
-  color: var(--grey);
-  letter-spacing: 0.1em;
-  margin-bottom: 12px;
-}
-
-.code-block code {
-  color: var(--lightgrey);
-  white-space: pre;
-  display: block;
-}
-
-/* ── Stack ── */
+/* ── STACK ── */
 .stack-line {
-  font-size: 20px;
-  color: var(--lightgrey);
-  letter-spacing: 0.1em;
+  font-size: 22px;
+  color: var(--mid);
+  letter-spacing: 0.12em;
 }
-
 .stack-line span { color: var(--fg); }
 
-/* ── Footer ── */
+/* ── FOOTER ── */
 footer {
-  padding: 48px 0;
-  font-size: 12px;
-  color: var(--grey);
+  padding: 44px 0;
+  font-size: 11px;
+  color: var(--mid);
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 12px;
 }
-
-footer a { color: var(--grey); }
+footer a { color: var(--mid); }
 footer a:hover { color: var(--fg); }
 
-@media (max-width: 700px) {
+/* ── RESPONSIVE ── */
+@media (max-width: 680px) {
   .problem-grid { grid-template-columns: 1fr; }
-  .problem-col { border-left: none; border-top: 1px solid var(--dimgrey); padding: 24px 0 0; margin-top: 24px; }
-  .problem-col:first-child { border-top: none; padding-top: 0; margin-top: 0; }
-  .code-row { grid-template-columns: 1fr; }
-  .hero-title { font-size: clamp(72px, 20vw, 120px); }
+  .problem-col  { border-left:none; border-top:1px solid var(--dim); padding:24px 0 0; margin-top:24px; }
+  .problem-col:first-child { border-top:none; padding-top:0; margin-top:0; }
+  .code-pair    { grid-template-columns: 1fr; }
+  .arch-row     { grid-template-columns: 1fr; }
+  .arch-cp-body { grid-template-columns: 1fr; }
+  .hero-recall  { font-size: clamp(72px, 22vw, 120px); }
 }
 </style>
 </head>
 <body>
 
-<!-- SVG noise filter for hero title -->
-<svg class="noise-filter" aria-hidden="true">
+<!-- SVG noise filter -->
+<svg style="display:none" aria-hidden="true">
   <filter id="noise">
-    <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" result="noiseOut"/>
-    <feDisplacementMap in="SourceGraphic" in2="noiseOut" scale="1.5" xChannelSelector="R" yChannelSelector="G"/>
+    <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" result="n"/>
+    <feDisplacementMap in="SourceGraphic" in2="n" scale="1.2" xChannelSelector="R" yChannelSelector="G"/>
   </filter>
 </svg>
 
+<!-- NAV -->
 <nav>
   <div class="inner">
-    <span class="logo">RECALL</span>
-    <div class="links">
+    <span class="nav-logo">RECALL</span>
+    <div class="nav-links">
       <a href="docs.html">Docs</a>
       <a href="https://github.com/KZN-Labs/Recall" target="_blank" rel="noopener">GitHub</a>
     </div>
   </div>
 </nav>
 
-<!-- ── 1. Hero ── -->
+<!-- HERO -->
 <section class="hero">
-  <div class="container">
-    <div class="hero-title">RECALL</div>
-    <div class="hero-subtitle" id="typewriter"></div>
-    <div class="hero-taglines reveal">
+  <div class="wrap">
+    <div class="hero-recall">RECALL</div>
+    <div class="hero-sub" id="tw"></div>
+    <div class="hero-lines reveal">
       Every write governed. Every action receipted. Every conflict detected.<br>
-      Built on Walrus &middot; Anchored on Sui &middot; Secured by Seal
+      Built on Walrus &nbsp;·&nbsp; Anchored on Sui &nbsp;·&nbsp; Secured by Seal
     </div>
     <a href="docs.html" class="cta reveal">Read the docs &rarr;</a>
   </div>
 </section>
 
-<!-- ── 2. The Problem ── -->
+<!-- PROBLEM -->
 <section>
-  <div class="container">
-    <div class="section-label reveal">AGENTS HAVE AMNESIA</div>
+  <div class="wrap">
+    <div class="sec-label reveal">AGENTS HAVE AMNESIA</div>
     <div class="problem-grid">
       <div class="problem-col reveal">
         <h3>THEY FORGET</h3>
-        <p>Every session starts blank. Six months of learned patterns, customer preferences, edge cases — gone. The agent asks the same questions it already knows the answers to.</p>
+        <p>Every session starts blank. Six months of learned patterns — customer preferences, escalation rules, edge cases — gone. The agent asks the same questions it already answered last quarter.</p>
       </div>
       <div class="problem-col reveal">
         <h3>THEY CONTRADICT</h3>
@@ -348,173 +421,224 @@ footer a:hover { color: var(--fg); }
   </div>
 </section>
 
-<!-- ── 3. How It Works ── -->
+<!-- HOW IT WORKS -->
 <section>
-  <div class="container">
-    <div class="section-label reveal">HOW RECALL WORKS</div>
-    <pre class="ascii-block reveal">
-  ┌─────────────┐   ┌─────────────┐   ┌─────────────────┐
-  │   AGENT A   │   │   AGENT B   │   │    AGENT C      │
-  │  support    │   │  fraud      │   │  orchestrator   │
-  └──────┬──────┘   └──────┬──────┘   └────────┬────────┘
-         │                 │                    │
-         └─────────────────┴────────────────────┘
-                           │
-              ┌────────────▼────────────────┐
-              │   RECALL CONTROL PLANE      │
-              │   gRPC :9090  REST :8080    │
-              │                             │
-              │  ▸ governance (Sui Move)    │
-              │  ▸ conflict detection       │
-              │  ▸ receipt chain            │
-              │  ▸ handoff capsules         │
-              └────────────┬────────────────┘
-                           │
-          ┌────────────────┼────────────────┐
-          │                │                │
-    ┌─────▼──────┐  ┌──────▼──────┐  ┌─────▼──────┐
-    │  WALRUS    │  │    SUI      │  │   SEAL     │
-    │  blob      │  │  receipt    │  │  threshold │
-    │  storage   │  │  anchoring  │  │  encrypt   │
-    └────────────┘  └─────────────┘  └────────────┘
-</pre>
+  <div class="wrap">
+    <div class="sec-label reveal">HOW RECALL WORKS</div>
+
+    <div class="arch-wrap reveal">
+
+      <!-- Agents row -->
+      <div class="arch-row">
+        <div class="arch-box">
+          <span class="arch-box-tag">AGENT A</span>
+          <span class="arch-box-sub">support · trust level 3</span>
+        </div>
+        <div class="arch-box">
+          <span class="arch-box-tag">AGENT B</span>
+          <span class="arch-box-sub">fraud · trust level 2</span>
+        </div>
+        <div class="arch-box">
+          <span class="arch-box-tag">AGENT C</span>
+          <span class="arch-box-sub">orchestrator · trust level 3</span>
+        </div>
+      </div>
+
+      <!-- Merge: 3 lines → 1 center line -->
+      <svg class="arch-svg" viewBox="0 0 840 44" preserveAspectRatio="none">
+        <line x1="140" y1="0"  x2="140" y2="22" stroke="#3a3a3a" stroke-width="1"/>
+        <line x1="420" y1="0"  x2="420" y2="22" stroke="#3a3a3a" stroke-width="1"/>
+        <line x1="700" y1="0"  x2="700" y2="22" stroke="#3a3a3a" stroke-width="1"/>
+        <line x1="140" y1="22" x2="700" y2="22" stroke="#3a3a3a" stroke-width="1"/>
+        <line x1="420" y1="22" x2="420" y2="44" stroke="#3a3a3a" stroke-width="1"/>
+        <circle cx="140" cy="22" r="2.5" fill="#555"/>
+        <circle cx="420" cy="22" r="2.5" fill="#555"/>
+        <circle cx="700" cy="22" r="2.5" fill="#555"/>
+      </svg>
+
+      <!-- Control plane -->
+      <div class="arch-cp">
+        <div class="arch-cp-head">
+          <span class="arch-cp-title">RECALL CONTROL PLANE</span>
+          <span class="arch-cp-ports">gRPC :9090 &nbsp;&nbsp;REST :8080</span>
+        </div>
+        <div class="arch-cp-body">
+          <div class="arch-cp-item">governance  (Sui Move)</div>
+          <div class="arch-cp-item">conflict detection</div>
+          <div class="arch-cp-item">receipt chain</div>
+          <div class="arch-cp-item">handoff capsules</div>
+        </div>
+      </div>
+
+      <!-- Fan-out: 1 center line → 3 lines -->
+      <svg class="arch-svg" viewBox="0 0 840 44" preserveAspectRatio="none">
+        <line x1="420" y1="0"  x2="420" y2="22" stroke="#3a3a3a" stroke-width="1"/>
+        <line x1="140" y1="22" x2="700" y2="22" stroke="#3a3a3a" stroke-width="1"/>
+        <line x1="140" y1="22" x2="140" y2="44" stroke="#3a3a3a" stroke-width="1"/>
+        <line x1="420" y1="22" x2="420" y2="44" stroke="#3a3a3a" stroke-width="1"/>
+        <line x1="700" y1="22" x2="700" y2="44" stroke="#3a3a3a" stroke-width="1"/>
+        <circle cx="140" cy="22" r="2.5" fill="#555"/>
+        <circle cx="420" cy="22" r="2.5" fill="#555"/>
+        <circle cx="700" cy="22" r="2.5" fill="#555"/>
+      </svg>
+
+      <!-- Services row -->
+      <div class="arch-row">
+        <div class="arch-box">
+          <span class="arch-box-tag">WALRUS</span>
+          <span class="arch-box-sub">permanent blob storage</span>
+          <span class="arch-box-detail">MemWal · testnet publisher</span>
+        </div>
+        <div class="arch-box">
+          <span class="arch-box-tag">SUI</span>
+          <span class="arch-box-sub">receipt anchoring</span>
+          <span class="arch-box-detail">receipt_anchor · Move contract</span>
+        </div>
+        <div class="arch-box">
+          <span class="arch-box-tag">SEAL</span>
+          <span class="arch-box-sub">threshold encryption</span>
+          <span class="arch-box-detail">workspace policy · key server</span>
+        </div>
+      </div>
+
+    </div>
   </div>
 </section>
 
-<!-- ── 4. The CLI ── -->
+<!-- THE CLI -->
 <section>
-  <div class="container">
-    <div class="section-label reveal">THE CLI IS THE PRODUCT</div>
+  <div class="wrap">
+    <div class="sec-label reveal">THE CLI IS THE PRODUCT</div>
 
     <div class="terminal reveal">
-      <div><span class="prompt">$ </span><span class="cmd">recall logs --follow</span></div>
-      <div class="output"><span class="conflict">ws_customer-ops</span>  fraud-agent       sarah@email.com    APPROVED_REFUND     2026-06-01T14:22:11Z
-<span class="conflict">ws_customer-ops</span>  support-agent     sarah@email.com    FLAGGED_FRAUD     ← <span class="conflict">CONFLICT</span>  2026-06-01T14:22:14Z
-<span class="conflict">ws_customer-ops</span>  risk-agent        global-risk-score  HIGH_VOLATILITY                       2026-06-01T14:22:19Z</div>
+      <div class="term-bar"><div class="term-dot"></div><div class="term-dot"></div><div class="term-dot"></div><span class="term-title">STREAMING WRITES</span></div>
+      <div class="term-body">
+        <div class="term-cmd">recall logs --follow</div>
+        <div class="term-out"><span class="term-hi">ws_customer-ops</span>  fraud-agent    sarah@email.com   APPROVED_REFUND                 14:22:11Z
+<span class="term-hi">ws_customer-ops</span>  support-agent  sarah@email.com   FLAGGED_FRAUD    <span class="term-warn">← CONFLICT</span>  14:22:14Z
+<span class="term-hi">ws_customer-ops</span>  risk-agent     global-risk       HIGH_VOLATILITY                 14:22:19Z</div>
+      </div>
     </div>
 
     <div class="terminal reveal">
-      <div><span class="prompt">$ </span><span class="cmd">recall failures</span></div>
-      <div class="output">WORKSPACE             ENTITY                  CONFLICT
-ws_customer-ops       sarah@email.com          ⚠ UNRESOLVED: APPROVED_REFUND vs FLAGGED_FRAUD
-ws_customer-ops       sarah@email.com          ⚠ UNRESOLVED: trust_level 3 vs trust_level 1</div>
+      <div class="term-bar"><div class="term-dot"></div><div class="term-dot"></div><div class="term-dot"></div><span class="term-title">UNRESOLVED CONFLICTS</span></div>
+      <div class="term-body">
+        <div class="term-cmd">recall failures</div>
+        <div class="term-out">WORKSPACE             ENTITY               CONFLICT
+ws_customer-ops       sarah@email.com       <span class="term-warn">⚠ UNRESOLVED</span>  APPROVED_REFUND vs FLAGGED_FRAUD
+ws_customer-ops       sarah@email.com       <span class="term-warn">⚠ UNRESOLVED</span>  trust_level 3 vs trust_level 1</div>
+      </div>
     </div>
 
     <div class="terminal reveal">
-      <div><span class="prompt">$ </span><span class="cmd">recall why --entity sarah@email.com</span></div>
-      <div class="output">Receipt trail for sarah@email.com in ws_customer-ops:
+      <div class="term-bar"><div class="term-dot"></div><div class="term-dot"></div><div class="term-dot"></div><span class="term-title">FULL RECEIPT TRAIL</span></div>
+      <div class="term-body">
+        <div class="term-cmd">recall why --entity sarah@email.com</div>
+        <div class="term-out">Receipt trail for <span class="term-hi">sarah@email.com</span> in ws_customer-ops
 
-  [14:21:03] support-agent     MEMORY_WRITE  approved_refund=true       trust=3  ✓
-  [14:22:11] fraud-agent       MEMORY_WRITE  flagged_for_fraud=true     trust=2  ✓
-  [14:22:14] CONFLICT ⚡ fraud-agent.flagged_for_fraud conflicts with support-agent.approved_refund
-  [14:22:19] risk-agent        MEMORY_WRITE  global_risk_score=HIGH     trust=2  ✓
+  14:21:03  support-agent    MEMORY_WRITE   approved_refund=true      trust=3  ✓
+  14:22:11  fraud-agent      MEMORY_WRITE   flagged_for_fraud=true    trust=2  ✓
+  14:22:14  <span class="term-warn">CONFLICT ⚡</span>  fraud-agent.flagged_for_fraud conflicts with support-agent.approved_refund
+  14:22:19  risk-agent       MEMORY_WRITE   global_risk_score=HIGH    trust=2  ✓
 
-All receipts anchored: Sui tx 8kPqR...mNzT3</div>
+  Anchored  Sui tx <span class="term-hi">8kPqRmNzT3...</span>  block 4821093</div>
+      </div>
     </div>
 
     <div class="terminal reveal">
-      <div><span class="prompt">$ </span><span class="cmd">recall export --entity sarah@email.com</span></div>
-      <div class="output">Exporting memory trail for sarah@email.com...
-  ✓ 14 memory entries
-  ✓ 6 receipts
-  ✓ 2 conflict records
-  ✓ Merkle proof attached
-Saved: sarah_email_com_2026-06-01.pdf  (audit-ready)</div>
+      <div class="term-bar"><div class="term-dot"></div><div class="term-dot"></div><div class="term-dot"></div><span class="term-title">AUDIT EXPORT</span></div>
+      <div class="term-body">
+        <div class="term-cmd">recall export --entity sarah@email.com</div>
+        <div class="term-out">  <span class="term-hi">✓</span> 14 memory entries
+  <span class="term-hi">✓</span> 6 receipts
+  <span class="term-hi">✓</span> 2 conflict records
+  <span class="term-hi">✓</span> Merkle proof attached
+  → sarah_email_com_2026-06-01.pdf</div>
+      </div>
     </div>
 
     <div class="terminal reveal">
-      <div><span class="prompt">$ </span><span class="cmd">recall registry import fraud-detection-agent@1.0</span></div>
-      <div class="output">Importing fraud-detection-agent@1.0 from RECALL Registry...
-  ✓ 847 memories pre-loaded
-  ✓ Passport issued: pp_8f3a2c...
-  ✓ Agent enrolled in ws_customer-ops
-Ready. Agent has 847 memories from previous deployments.</div>
+      <div class="term-bar"><div class="term-dot"></div><div class="term-dot"></div><div class="term-dot"></div><span class="term-title">REGISTRY IMPORT</span></div>
+      <div class="term-body">
+        <div class="term-cmd">recall registry import fraud-detection-agent@1.0</div>
+        <div class="term-out">  <span class="term-hi">✓</span> 847 memories pre-loaded
+  <span class="term-hi">✓</span> Passport issued: pp_8f3a2c...
+  <span class="term-hi">✓</span> Agent enrolled in ws_customer-ops
+  → Agent ready with 847 memories from previous deployments</div>
+      </div>
     </div>
+
   </div>
 </section>
 
-<!-- ── 5. Registry ── -->
+<!-- REGISTRY -->
 <section>
-  <div class="container">
-    <div class="section-label reveal">NPM FOR AGENT KNOWLEDGE</div>
-    <p class="reveal" style="color: var(--lightgrey); margin-bottom: 32px; font-size: 13px;">
+  <div class="wrap">
+    <div class="sec-label reveal">NPM FOR AGENT KNOWLEDGE</div>
+    <p class="reveal" style="font-size:13px;color:var(--light);margin-bottom:32px;line-height:1.9;max-width:580px;">
       Publish versioned memory packages from production deployments. Import them into new workspaces — agents start with institutional knowledge, not a blank slate.
     </p>
-    <div class="code-row reveal">
+    <div class="code-pair reveal">
       <div class="code-block">
-        <div class="label">PUBLISH</div>
-        <code>recall registry publish \
+        <div class="code-header">PUBLISH</div>
+        <div class="code-body">recall registry publish \
   --name fraud-detection-agent \
   --version 1.0 \
-  --workspace ws_customer-ops \
-  --category fraud
+  --workspace ws_customer-ops
 
-→ Published fraud-detection-agent@1.0
 → 847 memories packaged
-→ IPFS: bafybeig...
-→ Anchored: Sui tx 9mK...</code>
+→ Anchored: Sui tx 9mK...
+→ Published fraud-detection-agent@1.0</div>
       </div>
       <div class="code-block">
-        <div class="label">IMPORT</div>
-        <code>recall registry import \
+        <div class="code-header">IMPORT</div>
+        <div class="code-body">recall registry import \
   fraud-detection-agent@1.0
 
-→ Fetching from RECALL Registry...
 → Verifying Merkle root...
 → 847 memories imported
 → Passport issued
-→ Agent ready in 1.2s</code>
+→ Agent ready in 1.2s</div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ── 6. Stack ── -->
+<!-- STACK -->
 <section>
-  <div class="container">
-    <div class="section-label reveal">BUILT ON</div>
+  <div class="wrap">
+    <div class="sec-label reveal">BUILT ON</div>
     <div class="stack-line reveal">
-      <span>Walrus</span> &middot; <span>MemWal</span> &middot; <span>Seal</span> &middot; <span>Sui</span> &middot; <span>Move</span>
+      <span>Walrus</span> &nbsp;·&nbsp; <span>MemWal</span> &nbsp;·&nbsp; <span>Seal</span> &nbsp;·&nbsp; <span>Sui</span> &nbsp;·&nbsp; <span>Move</span>
     </div>
   </div>
 </section>
 
-<!-- ── Footer ── -->
+<!-- FOOTER -->
 <footer>
-  <div class="container" style="display:flex; justify-content:space-between; width:100%; flex-wrap:wrap; gap:16px;">
-    <span>RECALL &mdash; Sui Overflow 2026 &middot; Walrus Track</span>
+  <div class="wrap" style="display:flex;justify-content:space-between;width:100%;flex-wrap:wrap;gap:12px;">
+    <span>RECALL &mdash; Sui Overflow 2026 &nbsp;·&nbsp; Walrus Track</span>
     <a href="https://github.com/KZN-Labs/Recall" target="_blank" rel="noopener">github.com/KZN-Labs/Recall</a>
   </div>
 </footer>
 
 <script>
-// ── Typewriter ──────────────────────────────────────────────────────────────
-(function() {
-  var el = document.getElementById('typewriter');
-  var text = 'shared memory OS for AI agents.';
+// Typewriter
+(function(){
+  var el = document.getElementById('tw');
+  var txt = 'shared memory OS for AI agents.';
   var i = 0;
-  function tick() {
-    if (i <= text.length) {
-      el.textContent = text.slice(0, i);
-      i++;
-      setTimeout(tick, 45);
-    }
-  }
-  setTimeout(tick, 400);
+  function tick(){ if(i<=txt.length){ el.textContent=txt.slice(0,i++); setTimeout(tick,45); } }
+  setTimeout(tick, 500);
 })();
 
-// ── Scroll reveals ──────────────────────────────────────────────────────────
-(function() {
-  var items = document.querySelectorAll('.reveal');
-  var observer = new IntersectionObserver(function(entries) {
-    entries.forEach(function(entry) {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('visible');
-        observer.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.1 });
-  items.forEach(function(item) { observer.observe(item); });
+// Scroll reveals
+(function(){
+  var els = document.querySelectorAll('.reveal');
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('vis'); io.unobserve(e.target); } });
+  },{threshold:0.08});
+  els.forEach(function(el){ io.observe(el); });
 })();
 </script>
 </body>
