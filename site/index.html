@@ -6,19 +6,22 @@
 <title>RECALL — Shared Memory OS for AI Agents</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:       #000;
-  --fg:       #fff;
-  --dim:      #333;
-  --mid:      #555;
-  --light:    #888;
-  --read:     #aaa;
-  --head:     'Bebas Neue', sans-serif;
-  --mono:     'IBM Plex Mono', monospace;
+  --bg:      #0a0a0a;
+  --surface: #111111;
+  --output:  #0d0d0d;
+  --border:  #1e1e1e;
+  --border-hi: #2a2a2a;
+  --fg:      #ffffff;
+  --mid:     #888888;
+  --dim:     #555555;
+  --faint:   #444444;
+  --xfaint:  #333333;
+  --font:    'Geist Mono', ui-monospace, 'SF Mono', Menlo, Monaco, monospace;
 }
 
 html { scroll-behavior: smooth; }
@@ -26,382 +29,377 @@ html { scroll-behavior: smooth; }
 body {
   background: var(--bg);
   color: var(--fg);
-  font-family: var(--mono);
+  font-family: var(--font);
   font-size: 14px;
   line-height: 1.7;
-  cursor: crosshair;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scanline overlay */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background: repeating-linear-gradient(
-    transparent 0, transparent 1px,
-    rgba(255,255,255,0.018) 1px, rgba(255,255,255,0.018) 2px
-  );
-  background-size: 100% 2px;
-  pointer-events: none;
-  z-index: 9999;
-}
-
-a { color: var(--fg); text-decoration: none; }
-a:hover { text-decoration: underline; }
+a { color: inherit; text-decoration: none; }
 
 .wrap {
-  max-width: 900px;
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 0 32px;
+  padding: 0 24px;
 }
 
 /* ── NAV ── */
-nav.top {
-  border-bottom: 1px solid var(--dim);
-  padding: 16px 0;
-}
-nav.top .inner {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 0 32px;
+.nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 52px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  z-index: 100;
   display: flex;
-  justify-content: space-between;
   align-items: center;
 }
+.nav-inner {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .nav-logo {
-  height: 56px;
+  height: 28px;
   width: auto;
   display: block;
   filter: invert(1);
 }
-.nav-logo-fallback {
-  font-family: var(--head);
-  font-size: 22px;
-  letter-spacing: 0.04em;
+.nav-brand-text {
+  display: none;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--fg);
+  letter-spacing: 0.02em;
 }
 .nav-links {
   display: flex;
-  gap: 26px;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  color: var(--light);
-}
-.nav-links a { color: var(--light); }
-.nav-links a:hover { color: var(--fg); text-decoration: none; }
-
-/* ── HERO ── */
-.hero {
-  padding: 96px 0 84px;
-  border-bottom: 1px solid var(--dim);
-}
-
-.hero-recall {
-  font-family: var(--head);
-  font-size: clamp(96px, 19vw, 196px);
-  line-height: 0.88;
-  letter-spacing: -0.01em;
-  margin-bottom: 36px;
-  display: inline-block;
-  animation: glitch 4s infinite;
-  filter: url(#noise);
-}
-
-@keyframes glitch {
-  0%,93%,100% { clip-path: none; transform: translate(0,0); }
-  94% { clip-path: polygon(0 8%,100% 8%,100% 12%,0 12%);   transform: translate(-4px,0); }
-  95% { clip-path: polygon(0 42%,100% 42%,100% 47%,0 47%);  transform: translate(4px,0); }
-  96% { clip-path: polygon(0 68%,100% 68%,100% 72%,0 72%);  transform: translate(-3px,0); }
-  97% { clip-path: polygon(0 85%,100% 85%,100% 88%,0 88%);  transform: translate(2px,0); }
-  98% { clip-path: none; transform: translate(0,0); }
-}
-
-.hero-sub {
-  font-size: 17px;
-  color: var(--light);
-  margin-bottom: 32px;
-  min-height: 26px;
-  letter-spacing: 0.01em;
-}
-.hero-sub::after {
-  content: '|';
-  animation: blink 1s step-end infinite;
-}
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-
-.hero-lines {
+  gap: 28px;
   font-size: 13px;
   color: var(--mid);
-  line-height: 2.1;
-  margin-bottom: 44px;
 }
-
-.cta-row {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.cta {
-  display: inline-block;
-  border: 1px solid var(--fg);
-  padding: 11px 28px;
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.1em;
-  transition: background 0.12s, color 0.12s;
-}
-.cta:hover {
-  background: var(--fg);
-  color: var(--bg);
-  text-decoration: none;
-}
+.nav-links a { transition: color 0.12s; }
+.nav-links a:hover { color: var(--fg); }
 
 /* ── SECTIONS ── */
+main { padding-top: 52px; }
+
 section {
-  padding: 84px 0;
-  border-bottom: 1px solid var(--dim);
+  padding: 100px 0;
+  border-top: 1px solid var(--border);
 }
+section.hero { border-top: none; padding: 120px 0 100px; }
 
-.sec-label {
-  font-family: var(--head);
-  font-size: 52px;
-  letter-spacing: 0.02em;
-  margin-bottom: 36px;
-  line-height: 1;
-}
-
-.lead {
+.section-label {
   font-size: 13px;
-  color: var(--read);
-  line-height: 2;
-  max-width: 680px;
-  margin-bottom: 56px;
+  letter-spacing: 0.15em;
+  color: var(--faint);
+  text-transform: uppercase;
+  margin-bottom: 32px;
 }
 
-/* ── REVEAL ── */
-.reveal {
-  opacity: 0;
-  transform: translateY(18px);
-  transition: opacity 0.55s ease, transform 0.55s ease;
-}
-.reveal.vis { opacity: 1; transform: none; }
-
-/* ── PROBLEM ── */
-.problem-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 0;
-}
-.problem-col {
-  padding: 0 32px 0 28px;
-  border-left: 1px solid var(--dim);
-}
-.problem-col:first-child { border-left: none; padding-left: 0; }
-.problem-col h3 {
-  font-family: var(--head);
+.section-headline {
   font-size: 32px;
-  letter-spacing: 0.04em;
-  margin-bottom: 18px;
-}
-.problem-col p {
-  font-size: 12px;
-  color: var(--light);
-  line-height: 2;
-}
-
-/* ── FEATURE GRID (2x2) ── */
-.feat-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-.feat-block {
-  border: 1px solid var(--dim);
-  padding: 28px;
-  transition: border-color 0.18s;
-}
-.feat-block:hover { border-color: var(--fg); }
-
-.feat-label {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  color: var(--fg);
-  margin-bottom: 14px;
   font-weight: 500;
+  color: var(--fg);
+  line-height: 1.15;
+  margin-bottom: 16px;
+  letter-spacing: -0.01em;
 }
-.feat-block p {
-  font-size: 12px;
-  color: var(--light);
-  line-height: 2;
+.section-sub {
+  font-size: 14px;
+  color: var(--mid);
+  margin-bottom: 56px;
+  max-width: 640px;
+  line-height: 1.7;
 }
 
-/* ── ARCH DIAGRAM ── */
-.arch-wrap { width: 100%; }
-.arch-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 12px;
+/* ── HERO ── */
+.hero-headline {
+  font-size: clamp(48px, 8vw, 88px);
+  font-weight: 600;
+  line-height: 1.0;
+  color: var(--fg);
+  margin-bottom: 48px;
+  letter-spacing: -0.02em;
 }
-.arch-box {
-  border: 1px solid var(--dim);
-  padding: 18px 20px;
-  transition: border-color 0.18s;
-}
-.arch-box:hover { border-color: var(--fg); }
-.arch-box-tag {
-  font-family: var(--head);
-  font-size: 24px;
-  letter-spacing: 0.05em;
-  display: block;
-  margin-bottom: 2px;
-}
-.arch-box-sub {
-  font-size: 11px;
-  color: var(--mid);
-  display: block;
-}
-.arch-box-detail {
-  font-size: 10px;
-  color: var(--dim);
-  margin-top: 6px;
-  letter-spacing: 0.05em;
-}
-.arch-svg {
-  display: block;
-  width: 100%;
-  height: 44px;
-  overflow: visible;
-}
-.arch-cp {
-  border: 1px solid var(--mid);
-  background: #060606;
-  transition: border-color 0.18s;
-}
-.arch-cp:hover { border-color: var(--fg); }
-.arch-cp-head {
-  border-bottom: 1px solid var(--dim);
-  padding: 16px 22px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.arch-cp-title {
-  font-family: var(--head);
-  font-size: 26px;
-  letter-spacing: 0.04em;
-}
-.arch-cp-ports {
-  font-size: 11px;
-  color: var(--mid);
-  letter-spacing: 0.06em;
-}
-.arch-cp-body {
-  padding: 16px 22px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 40px;
-}
-.arch-cp-item {
-  font-size: 12px;
-  color: #777;
-}
-.arch-cp-item::before { content: '▸ '; color: var(--dim); }
+.hero-headline .line { display: block; }
 
-/* ── TERMINAL BLOCKS ── */
+.hero-sub {
+  font-size: 14px;
+  color: var(--mid);
+  margin-bottom: 64px;
+  max-width: 620px;
+}
+
+/* ── TERMINAL ── */
 .terminal {
-  background: #000;
-  border: 1px solid var(--dim);
-  margin-bottom: 12px;
-  transition: border-color 0.18s;
-  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  max-width: 560px;
+  width: 100%;
+  font-size: 13px;
 }
-.terminal:hover { border-color: var(--fg); }
+.terminal.wide { max-width: 720px; }
+
 .term-bar {
-  border-bottom: 1px solid var(--dim);
-  padding: 7px 16px;
+  height: 36px;
+  border-bottom: 1px solid var(--border);
   display: flex;
-  gap: 8px;
   align-items: center;
+  padding: 0 14px;
+  position: relative;
+}
+.term-dots {
+  display: flex;
+  gap: 6px;
 }
 .term-dot {
   width: 8px; height: 8px;
   border-radius: 50%;
-  background: var(--dim);
+  background: var(--xfaint);
 }
-.term-title {
-  font-size: 10px;
+.term-bar-title {
+  position: absolute;
+  left: 0; right: 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--faint);
+  pointer-events: none;
+}
+
+.term-body {
+  padding: 20px 24px;
   color: var(--mid);
-  letter-spacing: 0.1em;
-  margin-left: 4px;
+  line-height: 1.85;
+  font-variant-ligatures: none;
 }
-.term-body { padding: 16px 20px; }
-.term-cmd  { color: var(--fg); font-size: 12px; }
-.term-cmd::before { content: '$ '; color: var(--mid); }
-.term-out  { color: var(--light); font-size: 11px; margin-top: 10px; white-space: pre; line-height: 1.7; }
-.term-hi   { color: #fff; }
-.term-warn { color: #ccc; }
+.term-line {
+  display: flex;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.term-line.fadein {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.term-line.fadein.on { opacity: 1; }
 
-/* ── WALRUS SECTION ── */
-.walrus-prose {
-  font-size: 13px;
-  color: var(--read);
-  line-height: 2;
-  max-width: 720px;
-  margin-bottom: 40px;
-}
-.walrus-tag {
-  font-size: 18px;
-  color: var(--fg);
-  letter-spacing: 0.06em;
-  padding: 20px 0;
-  border-top: 1px solid var(--dim);
-  border-bottom: 1px solid var(--dim);
-}
+.term-prompt { color: var(--faint); margin-right: 10px; }
+.term-tick   { color: var(--faint); margin-right: 10px; }
+.term-text   { color: var(--mid); }
+.term-text.hi { color: var(--fg); }
+.term-blank  { height: 1.85em; }
 
-/* ── CODE PAIR ── */
-.code-pair {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+/* Hero install line + copy button */
+.term-install-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
 }
-.code-block {
-  border: 1px solid var(--dim);
-  background: #050505;
-  transition: border-color 0.18s;
-}
-.code-block:hover { border-color: var(--fg); }
-.code-header {
-  border-bottom: 1px solid var(--dim);
-  padding: 8px 16px;
-  font-size: 10px;
-  color: var(--mid);
-  letter-spacing: 0.1em;
-}
-.code-body {
-  padding: 16px 20px;
+.copy-btn {
+  font-family: var(--font);
   font-size: 11px;
-  color: var(--light);
-  white-space: pre;
-  line-height: 1.8;
+  color: var(--faint);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  letter-spacing: 0.04em;
+}
+.copy-btn:hover {
+  color: var(--fg);
+  border-color: var(--border-hi);
+}
+.copy-btn.copied {
+  color: var(--fg);
+  border-color: var(--fg);
 }
 
-/* ── STACK ── */
-.stack-line {
-  font-size: 22px;
-  color: var(--mid);
-  letter-spacing: 0.12em;
+/* ── CTA row ── */
+.cta-row {
+  display: flex;
+  gap: 32px;
+  margin-top: 32px;
+  flex-wrap: wrap;
 }
-.stack-line span { color: var(--fg); }
+.cta-link {
+  font-size: 13px;
+  color: var(--mid);
+  transition: color 0.12s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cta-link.primary { color: var(--fg); }
+.cta-link:hover { color: var(--fg); }
+.cta-link .arrow { transition: transform 0.15s; }
+.cta-link:hover .arrow { transform: translateX(3px); }
+
+/* ── PROBLEM (stacked items) ── */
+.problem-list {
+  border-top: 1px solid var(--border);
+}
+.problem-item {
+  padding: 40px 0;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 80px;
+  border-bottom: 1px solid var(--border);
+}
+.problem-label {
+  font-size: 13px;
+  color: var(--fg);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+.problem-body {
+  font-size: 14px;
+  color: var(--mid);
+  line-height: 1.8;
+  max-width: 640px;
+}
+
+/* ── HOW IT WORKS — stats ── */
+.stats-row {
+  display: flex;
+  gap: 80px;
+  margin-top: 48px;
+  flex-wrap: wrap;
+}
+.stat-num {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--fg);
+  line-height: 1;
+  margin-bottom: 8px;
+  letter-spacing: -0.01em;
+}
+.stat-label {
+  font-size: 12px;
+  color: var(--faint);
+  letter-spacing: 0.06em;
+}
+
+/* Code block inside terminal */
+.term-code {
+  padding: 20px 24px;
+  color: var(--mid);
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre;
+  overflow-x: auto;
+}
+.code-kw   { color: var(--fg); }
+.code-str  { color: #aaa; }
+.code-cmt  { color: var(--faint); }
+.code-fn   { color: #ccc; }
+
+/* ── CLI list ── */
+.cli-list { margin-top: 0; }
+.cli-block {
+  border: 1px solid var(--border);
+  margin-bottom: -1px;
+  transition: border-color 0.15s;
+}
+.cli-block:hover { border-color: var(--border-hi); position: relative; z-index: 1; }
+
+.cli-top {
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+}
+.cli-cmd {
+  font-size: 13px;
+  color: var(--fg);
+  font-weight: 400;
+}
+.cli-cmd .p { color: var(--faint); margin-right: 8px; }
+.cli-desc {
+  font-size: 13px;
+  color: var(--faint);
+  text-align: right;
+}
+.cli-out {
+  padding: 16px 24px;
+  background: var(--output);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--dim);
+  white-space: pre;
+  overflow-x: auto;
+  line-height: 1.8;
+}
+.cli-out .hi { color: var(--fg); }
+
+/* ── USE CASES — 2x2 grid ── */
+.use-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.use-card {
+  border: 1px solid var(--border);
+  padding: 32px;
+  transition: border-color 0.15s;
+}
+.use-card:hover { border-color: var(--border-hi); }
+.use-label {
+  font-size: 12px;
+  color: var(--fg);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  margin-bottom: 16px;
+}
+.use-body {
+  font-size: 13px;
+  color: var(--mid);
+  line-height: 1.85;
+}
+
+/* ── INFRASTRUCTURE — row ── */
+.infra-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+}
+.infra-card {
+  border: 1px solid var(--border);
+  padding: 24px;
+  transition: border-color 0.15s;
+}
+.infra-card:hover { border-color: var(--border-hi); }
+.infra-name {
+  font-size: 13px;
+  color: var(--fg);
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+.infra-desc {
+  font-size: 12px;
+  color: var(--faint);
+  line-height: 1.6;
+}
 
 /* ── FOOTER ── */
 footer {
-  padding: 44px 0;
-  font-size: 11px;
-  color: var(--mid);
+  padding: 48px 0;
+  border-top: 1px solid var(--border);
 }
 .foot-inner {
   display: flex;
@@ -409,396 +407,428 @@ footer {
   align-items: center;
   flex-wrap: wrap;
   gap: 16px;
-  max-width: 900px;
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 0 32px;
+  padding: 0 24px;
 }
-.foot-links { display: flex; gap: 24px; }
-footer a { color: var(--mid); }
-footer a:hover { color: var(--fg); }
+.foot-brand .brand-name {
+  font-size: 13px;
+  color: var(--fg);
+  margin-bottom: 4px;
+}
+.foot-brand .brand-tag {
+  font-size: 12px;
+  color: var(--faint);
+}
+.foot-links {
+  display: flex;
+  gap: 24px;
+  font-size: 12px;
+  color: var(--mid);
+}
+.foot-links a { transition: color 0.12s; }
+.foot-links a:hover { color: var(--fg); }
+
+/* ── REVEAL ── */
+.reveal {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.reveal.vis { opacity: 1; }
 
 /* ── RESPONSIVE ── */
-@media (max-width: 720px) {
-  .problem-grid { grid-template-columns: 1fr; }
-  .problem-col  { border-left:none; border-top:1px solid var(--dim); padding:28px 0 0; margin-top:28px; }
-  .problem-col:first-child { border-top:none; padding-top:0; margin-top:0; }
-  .feat-grid    { grid-template-columns: 1fr; }
-  .code-pair    { grid-template-columns: 1fr; }
-  .arch-row     { grid-template-columns: 1fr; }
-  .arch-cp-body { grid-template-columns: 1fr; }
-  .hero-recall  { font-size: clamp(72px, 22vw, 120px); }
+@media (max-width: 768px) {
+  .nav-links a[data-mobile-hide] { display: none; }
+  .hero-headline { font-size: clamp(36px, 10vw, 56px); }
+  .problem-item {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .cli-out { display: none; }
+  .cli-desc { display: none; }
+  .use-grid { grid-template-columns: 1fr; }
+  .infra-row { grid-template-columns: 1fr 1fr; }
+  .stats-row { gap: 40px; }
+  section { padding: 64px 0; }
+  section.hero { padding: 88px 0 64px; }
 }
 </style>
 </head>
 <body>
 
-<!-- SVG noise filter for hero title -->
-<svg style="display:none" aria-hidden="true">
-  <filter id="noise">
-    <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" result="n"/>
-    <feDisplacementMap in="SourceGraphic" in2="n" scale="1.2" xChannelSelector="R" yChannelSelector="G"/>
-  </filter>
-</svg>
-
 <!-- NAV -->
-<nav class="top">
-  <div class="inner">
-    <!-- drop logo.png into site/assets/ -->
-    <a href="index.html" aria-label="RECALL home" class="nav-logo-link">
+<header class="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-brand" aria-label="RECALL home">
+      <!-- drop logo.png into site/assets/ -->
       <img src="assets/logo.jpg" alt="RECALL" class="nav-logo"
            onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
-      <span class="nav-logo-fallback" style="display:none;">RECALL</span>
+      <span class="nav-brand-text">RECALL</span>
     </a>
-    <div class="nav-links">
+    <nav class="nav-links">
       <a href="docs.html">Docs</a>
-      <a href="article.html">Article</a>
-      <a href="https://github.com/KZN-Labs/Recall" target="_blank" rel="noopener">GitHub</a>
-    </div>
+      <a href="article.html">Writing</a>
+      <a href="https://github.com/KZN-Labs/Recall" target="_blank" rel="noopener" data-mobile-hide>GitHub</a>
+    </nav>
   </div>
-</nav>
+</header>
+
+<main>
 
 <!-- HERO -->
 <section class="hero">
   <div class="wrap">
-    <div class="hero-recall">RECALL</div>
-    <div class="hero-sub" id="tw"></div>
-    <div class="hero-lines reveal">
-      Every write governed. Every action receipted. Every conflict detected.<br>
-      Built on Walrus &nbsp;·&nbsp; Anchored on Sui &nbsp;·&nbsp; Secured by Seal
+    <div class="section-label">SHARED MEMORY OS FOR AI AGENTS</div>
+
+    <h1 class="hero-headline">
+      <span class="line">Agents that remember.</span>
+      <span class="line">Agents that agree.</span>
+    </h1>
+
+    <p class="hero-sub">Every write governed. Every conflict detected. Every decision auditable.</p>
+
+    <div class="terminal">
+      <div class="term-bar">
+        <div class="term-dots">
+          <span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span>
+        </div>
+        <div class="term-bar-title">terminal</div>
+      </div>
+      <div class="term-body">
+        <div class="term-line term-install-row">
+          <span><span class="term-prompt">$</span><span class="term-text hi">pip install recall</span></span>
+          <button class="copy-btn" id="copy-btn" type="button" aria-label="Copy install command">copy</button>
+        </div>
+        <div class="term-line fadein" id="t-install-ok">
+          <span class="term-tick">✓</span><span class="term-text">installed recall 0.1.0</span>
+        </div>
+        <div class="term-blank"></div>
+        <div class="term-line">
+          <span class="term-prompt">$</span><span class="term-text hi">recall logs --follow</span>
+        </div>
+        <div class="term-line fadein" id="t-log-1">
+          <span class="term-text">ws/acme  support-agent    credit_offered      sarah@email.com</span>
+        </div>
+        <div class="term-line fadein" id="t-log-2">
+          <span class="term-text">ws/acme  fraud-agent      flag_suspicious     sarah@email.com</span>
+        </div>
+        <div class="term-line fadein" id="t-log-3">
+          <span class="term-text hi">ws/acme  ⚠ CONFLICT       support vs fraud    sarah@email.com</span>
+        </div>
+      </div>
     </div>
-    <div class="cta-row reveal">
-      <a href="docs.html"    class="cta">Read the docs &rarr;</a>
-      <a href="article.html" class="cta">Read the article &rarr;</a>
+
+    <div class="cta-row">
+      <a href="docs.html" class="cta-link primary">Read the docs <span class="arrow">→</span></a>
+      <a href="article.html" class="cta-link">Read the article <span class="arrow">→</span></a>
     </div>
   </div>
 </section>
 
-<!-- PROBLEM -->
-<section>
+<!-- THE PROBLEM -->
+<section class="reveal">
   <div class="wrap">
-    <div class="sec-label reveal">AGENTS HAVE AMNESIA</div>
-    <p class="lead reveal">
-      Building one AI agent is trivially easy now. Getting a group of them to
-      actually remember anything, agree on anything, or be auditable afterward —
-      that's the unsolved part.
-    </p>
-    <div class="problem-grid">
-      <div class="problem-col reveal">
-        <h3>THEY FORGET</h3>
-        <p>
+    <div class="section-label">THE PROBLEM</div>
+    <div class="problem-list">
+
+      <div class="problem-item">
+        <div class="problem-label">01 — THEY FORGET</div>
+        <div class="problem-body">
           Every session starts blank. An agent that spent six months learning
           your customers, your edge cases, your patterns — gone the moment the
           context window closes. The next session starts from zero. You're not
           running an agent. You're running a very expensive stateless function.
-        </p>
+        </div>
       </div>
-      <div class="problem-col reveal">
-        <h3>THEY CONTRADICT</h3>
-        <p>
+
+      <div class="problem-item">
+        <div class="problem-label">02 — THEY CONTRADICT</div>
+        <div class="problem-body">
           Support approves the credit. Fraud flags the same customer two
           minutes later. Billing processes it anyway. None of them knew what
           the others did. Nobody wrote it down. The customer calls back
           tomorrow with the same problem. This is the default behavior of
           every multi-agent system in production today.
-        </p>
+        </div>
       </div>
-      <div class="problem-col reveal">
-        <h3>NOTHING IS AUDITABLE</h3>
-        <p>
+
+      <div class="problem-item">
+        <div class="problem-label">03 — NOTHING IS AUDITABLE</div>
+        <div class="problem-body">
           When an agent makes a wrong decision, the answer to "why did it do
           that?" is almost always: we don't know. The memory lived in a
           context window, got flushed, and is gone. In regulated industries
-          this is becoming a compliance crisis. Regulators are starting to
-          ask for decision trails. Current architectures cannot provide them.
-        </p>
+          this is becoming a compliance crisis. Regulators are starting to ask
+          for decision trails. Current architectures cannot provide them.
+        </div>
       </div>
+
     </div>
   </div>
 </section>
 
-<!-- THE MISSING PIECE — 2x2 feature grid -->
-<section>
+<!-- HOW IT WORKS -->
+<section class="reveal">
   <div class="wrap">
-    <div class="sec-label reveal">THE MISSING PIECE</div>
-    <div class="feat-grid">
-      <div class="feat-block reveal">
-        <div class="feat-label">SHARED WORKSPACES</div>
-        <p>
-          Multiple agents, one memory context. Every agent reads the workspace
-          before responding. Every agent writes to it after acting. When agent
-          B acts, it knows what agent A already did. No more silos. No more
-          agents working blind.
-        </p>
+    <div class="section-label">HOW IT WORKS</div>
+    <h2 class="section-headline">Three lines of code.</h2>
+
+    <div class="terminal wide">
+      <div class="term-bar">
+        <div class="term-dots">
+          <span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span>
+        </div>
+        <div class="term-bar-title">agent.py</div>
       </div>
-      <div class="feat-block reveal">
-        <div class="feat-label">CONFLICT DETECTION</div>
-        <p>
-          When two agents write contradictory signals about the same entity,
-          RECALL catches it immediately — before damage, not after. The
-          higher-trust agent's signal takes precedence for auto-resolution.
-          Nothing is silently overwritten. Every conflict is logged. Every
-          resolution is receipted.
-        </p>
-      </div>
-      <div class="feat-block reveal">
-        <div class="feat-label">CRYPTOGRAPHIC RECEIPTS</div>
-        <p>
-          Every memory write produces a content-addressed, signed, append-only
-          receipt. Receipt ID is the SHA-256 of the canonical serialization.
-          When someone asks "why did the agent make that decision" — you walk
-          the receipt DAG. The answer is always there.
-        </p>
-      </div>
-      <div class="feat-block reveal">
-        <div class="feat-label">THE REGISTRY</div>
-        <p>
-          There is no npm for agent intelligence. RECALL's registry fixes this.
-          Publish your agent's accumulated memory once. Any team imports it
-          and starts with full context — permanently stored on Walrus,
-          cryptographically immutable. The quality guarantee is on-chain.
-        </p>
-      </div>
+      <div class="term-code"><span class="code-kw">import</span> recall
+
+<span class="code-kw">async with</span> recall.connect(<span class="code-str">'my-workspace'</span>, agent=<span class="code-str">'support-agent'</span>, model=<span class="code-str">'claude-sonnet-4'</span>) <span class="code-kw">as</span> ws:
+    <span class="code-cmt"># Read what other agents already know</span>
+    memory = <span class="code-kw">await</span> ws.<span class="code-fn">read</span>(entity=<span class="code-str">'sarah@email.com'</span>)
+
+    <span class="code-cmt"># Agent processes with full context...</span>
+
+    <span class="code-cmt"># Write what you learned — persisted to Walrus, receipted, conflict-checked</span>
+    <span class="code-kw">await</span> ws.<span class="code-fn">write</span>(entity=<span class="code-str">'sarah@email.com'</span>, event=<span class="code-str">'credit_offered'</span>, value=<span class="code-str">'10%'</span>)</div>
     </div>
-  </div>
-</section>
 
-<!-- HOW IT WORKS — diagram -->
-<section>
-  <div class="wrap">
-    <div class="sec-label reveal">HOW RECALL WORKS</div>
-    <div class="arch-wrap reveal">
-
-      <div class="arch-row">
-        <div class="arch-box">
-          <span class="arch-box-tag">AGENT A</span>
-          <span class="arch-box-sub">support · trust level 3</span>
-        </div>
-        <div class="arch-box">
-          <span class="arch-box-tag">AGENT B</span>
-          <span class="arch-box-sub">fraud · trust level 2</span>
-        </div>
-        <div class="arch-box">
-          <span class="arch-box-tag">AGENT C</span>
-          <span class="arch-box-sub">orchestrator · trust level 3</span>
-        </div>
+    <div class="stats-row">
+      <div>
+        <div class="stat-num">5</div>
+        <div class="stat-label">SDK METHODS</div>
       </div>
-
-      <svg class="arch-svg" viewBox="0 0 840 44" preserveAspectRatio="none">
-        <line x1="140" y1="0"  x2="140" y2="22" stroke="#3a3a3a" stroke-width="1"/>
-        <line x1="420" y1="0"  x2="420" y2="22" stroke="#3a3a3a" stroke-width="1"/>
-        <line x1="700" y1="0"  x2="700" y2="22" stroke="#3a3a3a" stroke-width="1"/>
-        <line x1="140" y1="22" x2="700" y2="22" stroke="#3a3a3a" stroke-width="1"/>
-        <line x1="420" y1="22" x2="420" y2="44" stroke="#3a3a3a" stroke-width="1"/>
-        <circle cx="140" cy="22" r="2.5" fill="#555"/>
-        <circle cx="420" cy="22" r="2.5" fill="#555"/>
-        <circle cx="700" cy="22" r="2.5" fill="#555"/>
-      </svg>
-
-      <div class="arch-cp">
-        <div class="arch-cp-head">
-          <span class="arch-cp-title">RECALL CONTROL PLANE</span>
-          <span class="arch-cp-ports">gRPC :9090 &nbsp;&nbsp;REST :8080</span>
-        </div>
-        <div class="arch-cp-body">
-          <div class="arch-cp-item">governance  (Sui Move)</div>
-          <div class="arch-cp-item">conflict detection</div>
-          <div class="arch-cp-item">receipt chain</div>
-          <div class="arch-cp-item">handoff capsules</div>
-        </div>
+      <div>
+        <div class="stat-num">&lt; 30s</div>
+        <div class="stat-label">INTEGRATION TIME</div>
       </div>
-
-      <svg class="arch-svg" viewBox="0 0 840 44" preserveAspectRatio="none">
-        <line x1="420" y1="0"  x2="420" y2="22" stroke="#3a3a3a" stroke-width="1"/>
-        <line x1="140" y1="22" x2="700" y2="22" stroke="#3a3a3a" stroke-width="1"/>
-        <line x1="140" y1="22" x2="140" y2="44" stroke="#3a3a3a" stroke-width="1"/>
-        <line x1="420" y1="22" x2="420" y2="44" stroke="#3a3a3a" stroke-width="1"/>
-        <line x1="700" y1="22" x2="700" y2="44" stroke="#3a3a3a" stroke-width="1"/>
-        <circle cx="140" cy="22" r="2.5" fill="#555"/>
-        <circle cx="420" cy="22" r="2.5" fill="#555"/>
-        <circle cx="700" cy="22" r="2.5" fill="#555"/>
-      </svg>
-
-      <div class="arch-row">
-        <div class="arch-box">
-          <span class="arch-box-tag">WALRUS</span>
-          <span class="arch-box-sub">permanent blob storage</span>
-          <span class="arch-box-detail">MemWal · testnet publisher</span>
-        </div>
-        <div class="arch-box">
-          <span class="arch-box-tag">SUI</span>
-          <span class="arch-box-sub">receipt anchoring</span>
-          <span class="arch-box-detail">receipt_anchor · Move contract</span>
-        </div>
-        <div class="arch-box">
-          <span class="arch-box-tag">SEAL</span>
-          <span class="arch-box-sub">threshold encryption</span>
-          <span class="arch-box-detail">workspace policy · key server</span>
-        </div>
+      <div>
+        <div class="stat-num">∞</div>
+        <div class="stat-label">SESSIONS REMEMBERED</div>
       </div>
-
     </div>
   </div>
 </section>
 
 <!-- THE CLI -->
-<section>
+<section class="reveal">
   <div class="wrap">
-    <div class="sec-label reveal">THE CLI IS THE PRODUCT</div>
+    <div class="section-label">THE CLI IS THE PRODUCT</div>
+    <h2 class="section-headline">Answers, not dashboards.</h2>
+    <p class="section-sub">Developers live in the terminal. RECALL does too.</p>
 
-    <div class="terminal reveal">
-      <div class="term-bar"><div class="term-dot"></div><div class="term-dot"></div><div class="term-dot"></div><span class="term-title">STREAMING WRITES</span></div>
-      <div class="term-body">
-        <div class="term-cmd">recall logs --follow</div>
-        <div class="term-out"><span class="term-hi">ws_customer-ops</span>  fraud-agent    sarah@email.com   APPROVED_REFUND                 14:22:11Z
-<span class="term-hi">ws_customer-ops</span>  support-agent  sarah@email.com   FLAGGED_FRAUD    <span class="term-warn">← CONFLICT</span>  14:22:14Z
-<span class="term-hi">ws_customer-ops</span>  risk-agent     global-risk       HIGH_VOLATILITY                 14:22:19Z</div>
+    <div class="cli-list">
+
+      <div class="cli-block">
+        <div class="cli-top">
+          <div class="cli-cmd"><span class="p">$</span>recall logs --follow</div>
+          <div class="cli-desc">stream live agent activity</div>
+        </div>
+        <div class="cli-out">ws/acme  support-agent    credit_offered      sarah@email.com    14:22:11
+ws/acme  fraud-agent      flag_suspicious     sarah@email.com  <span class="hi">← CONFLICT</span>
+ws/acme  billing-agent    invoice_sent        john@example.com   14:22:19</div>
       </div>
-    </div>
 
-    <div class="terminal reveal">
-      <div class="term-bar"><div class="term-dot"></div><div class="term-dot"></div><div class="term-dot"></div><span class="term-title">UNRESOLVED CONFLICTS</span></div>
-      <div class="term-body">
-        <div class="term-cmd">recall failures</div>
-        <div class="term-out">WORKSPACE             ENTITY               CONFLICT
-ws_customer-ops       sarah@email.com       <span class="term-warn">⚠ UNRESOLVED</span>  APPROVED_REFUND vs FLAGGED_FRAUD
-ws_customer-ops       sarah@email.com       <span class="term-warn">⚠ UNRESOLVED</span>  trust_level 3 vs trust_level 1</div>
+      <div class="cli-block">
+        <div class="cli-top">
+          <div class="cli-cmd"><span class="p">$</span>recall failures</div>
+          <div class="cli-desc">surface every conflict instantly</div>
+        </div>
+        <div class="cli-out">CONFLICTS
+─────────────────────────────────────────────────────
+<span class="hi">⚠</span>  conflict_019e7   support-agent vs fraud-agent   sarah@email.com   <span class="hi">UNRESOLVED</span></div>
       </div>
-    </div>
 
-    <div class="terminal reveal">
-      <div class="term-bar"><div class="term-dot"></div><div class="term-dot"></div><div class="term-dot"></div><span class="term-title">FULL RECEIPT TRAIL</span></div>
-      <div class="term-body">
-        <div class="term-cmd">recall why --entity sarah@email.com</div>
-        <div class="term-out">Receipt trail for <span class="term-hi">sarah@email.com</span> in ws_customer-ops
-
-  14:21:03  support-agent    MEMORY_WRITE   approved_refund=true      trust=3  ✓
-  14:22:11  fraud-agent      MEMORY_WRITE   flagged_for_fraud=true    trust=2  ✓
-  14:22:14  <span class="term-warn">CONFLICT ⚡</span>  fraud-agent.flagged_for_fraud conflicts with support-agent.approved_refund
-  14:22:19  risk-agent       MEMORY_WRITE   global_risk_score=HIGH    trust=2  ✓
-
-  Anchored  Sui tx <span class="term-hi">8kPqRmNzT3...</span>  block 4821093</div>
+      <div class="cli-block">
+        <div class="cli-top">
+          <div class="cli-cmd"><span class="p">$</span>recall why --entity sarah@email.com</div>
+          <div class="cli-desc">full decision trail for any entity</div>
+        </div>
+        <div class="cli-out">14:22:09  support-agent  →  credit_offered
+          receipt: #mem_f97c062d   walrus: 0x7f3a...
+          <span class="hi">⚡ CONFLICT</span> with flag_suspicious (fraud-agent)
+14:22:11  fraud-agent    →  flag_suspicious
+          receipt: #mem_da21527a   trust: HIGH</div>
       </div>
-    </div>
 
-    <div class="terminal reveal">
-      <div class="term-bar"><div class="term-dot"></div><div class="term-dot"></div><div class="term-dot"></div><span class="term-title">AUDIT EXPORT</span></div>
-      <div class="term-body">
-        <div class="term-cmd">recall export --entity sarah@email.com</div>
-        <div class="term-out">  <span class="term-hi">✓</span> 14 memory entries
-  <span class="term-hi">✓</span> 6 receipts
-  <span class="term-hi">✓</span> 2 conflict records
-  <span class="term-hi">✓</span> Merkle proof attached
-  → sarah_email_com_2026-06-01.pdf</div>
+      <div class="cli-block">
+        <div class="cli-top">
+          <div class="cli-cmd"><span class="p">$</span>recall export --entity sarah@email.com</div>
+          <div class="cli-desc">PDF audit trail for compliance</div>
+        </div>
+        <div class="cli-out">→ Generating audit trail...
+<span class="hi">✓</span> 4 writes · 1 conflict · Merkle proof attached
+<span class="hi">✓</span> Saved: sarah_email_com-audit.pdf</div>
       </div>
-    </div>
 
-    <div class="terminal reveal">
-      <div class="term-bar"><div class="term-dot"></div><div class="term-dot"></div><div class="term-dot"></div><span class="term-title">REGISTRY IMPORT</span></div>
-      <div class="term-body">
-        <div class="term-cmd">recall registry import fraud-detection-agent@1.0</div>
-        <div class="term-out">  <span class="term-hi">✓</span> 847 memories pre-loaded
-  <span class="term-hi">✓</span> Passport issued: pp_8f3a2c...
-  <span class="term-hi">✓</span> Agent enrolled in ws_customer-ops
-  → Agent ready with 847 memories from previous deployments</div>
+      <div class="cli-block">
+        <div class="cli-top">
+          <div class="cli-cmd"><span class="p">$</span>recall registry import fraud-detection-agent@1.0</div>
+          <div class="cli-desc">start agents with existing knowledge</div>
+        </div>
+        <div class="cli-out">→ Importing fraud-detection-agent@1.0...
+<span class="hi">✓</span> 847 memories pre-loaded
+<span class="hi">✓</span> Agent ready in ws_fraud-detection-agent</div>
       </div>
-    </div>
 
-  </div>
-</section>
-
-<!-- WHY WALRUS -->
-<section>
-  <div class="wrap">
-    <div class="sec-label reveal">MEMORY MUST BE VERIFIABLE</div>
-    <p class="walrus-prose reveal">
-      Every design decision in RECALL flows from one principle: memory must be
-      verifiable. When an agent makes a decision, the memory that informed that
-      decision must exist as a permanent, tamper-proof record. A database entry
-      can be modified. A log can be altered. A blob on Walrus cannot. Every
-      memory write in RECALL is a permanent Walrus blob. Every receipt batch
-      has its Merkle root anchored on Sui. No agent data goes on-chain — only
-      hashes. But those hashes mean any party can independently verify the
-      full decision trail without trusting the control plane.
-    </p>
-    <div class="walrus-tag reveal">
-      Built on Walrus Memory &nbsp;·&nbsp; Anchored on Sui &nbsp;·&nbsp; Governed by Move &nbsp;·&nbsp; Secured by Seal
     </div>
   </div>
 </section>
 
-<!-- REGISTRY -->
-<section>
+<!-- USE CASES -->
+<section class="reveal">
   <div class="wrap">
-    <div class="sec-label reveal">NPM FOR AGENT KNOWLEDGE</div>
-    <p class="reveal" style="font-size:13px;color:var(--light);margin-bottom:32px;line-height:1.9;max-width:580px;">
-      Publish versioned memory packages from production deployments. Import
-      them into new workspaces — agents start with institutional knowledge,
-      not a blank slate.
-    </p>
-    <div class="code-pair reveal">
-      <div class="code-block">
-        <div class="code-header">PUBLISH</div>
-        <div class="code-body">recall registry publish \
-  --name fraud-detection-agent \
-  --version 1.0 \
-  --workspace ws_customer-ops
+    <div class="section-label">USE CASES</div>
 
-→ 847 memories packaged
-→ Anchored: Sui tx 9mK...
-→ Published fraud-detection-agent@1.0</div>
+    <div class="use-grid">
+
+      <div class="use-card">
+        <div class="use-label">CUSTOMER OPS</div>
+        <div class="use-body">
+          Support, billing, and fraud agents sharing one workspace. Support
+          resolutions inform billing decisions. Fraud flags prevent credits
+          from being exploited. Compliance exports in minutes, not weeks.
+        </div>
       </div>
-      <div class="code-block">
-        <div class="code-header">IMPORT</div>
-        <div class="code-body">recall registry import \
-  fraud-detection-agent@1.0
 
-→ Verifying Merkle root...
-→ 847 memories imported
-→ Passport issued
-→ Agent ready in 1.2s</div>
+      <div class="use-card">
+        <div class="use-label">DEFI COORDINATION</div>
+        <div class="use-body">
+          Research, risk, and execution agents where every order is traceable
+          to the exact memory that informed it. Every market observation
+          permanently receipted. Full audit trail without extra instrumentation.
+        </div>
+      </div>
+
+      <div class="use-card">
+        <div class="use-label">HEALTHCARE TRIAGE</div>
+        <div class="use-body">
+          Diagnostic agents where contradictory assessments are flagged for
+          human review before any recommendation is made. The full decision
+          trail available for medical audit.
+        </div>
+      </div>
+
+      <div class="use-card">
+        <div class="use-label">REGULATED WORK</div>
+        <div class="use-body">
+          Finance, insurance, legal — any domain where you need to prove
+          afterward exactly what happened, which agent decided it, and what
+          memory it was operating on. Governance rules enforced by Move
+          contracts on Sui.
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- INFRASTRUCTURE -->
+<section class="reveal">
+  <div class="wrap">
+    <div class="section-label">INFRASTRUCTURE</div>
+
+    <div class="infra-row">
+      <div class="infra-card">
+        <div class="infra-name">Walrus Memory</div>
+        <div class="infra-desc">permanent verifiable blob storage</div>
+      </div>
+      <div class="infra-card">
+        <div class="infra-name">Sui</div>
+        <div class="infra-desc">receipt anchoring · Move governance</div>
+      </div>
+      <div class="infra-card">
+        <div class="infra-name">Seal</div>
+        <div class="infra-desc">threshold encryption</div>
+      </div>
+      <div class="infra-card">
+        <div class="infra-name">Rust</div>
+        <div class="infra-desc">control plane · gRPC · zero-cost</div>
+      </div>
+      <div class="infra-card">
+        <div class="infra-name">Python</div>
+        <div class="infra-desc">agent SDK · framework adapters</div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- STACK -->
-<section>
-  <div class="wrap">
-    <div class="sec-label reveal">BUILT ON</div>
-    <div class="stack-line reveal">
-      <span>Walrus</span> &nbsp;·&nbsp; <span>MemWal</span> &nbsp;·&nbsp; <span>Seal</span> &nbsp;·&nbsp; <span>Sui</span> &nbsp;·&nbsp; <span>Move</span>
-    </div>
-  </div>
-</section>
+</main>
 
 <!-- FOOTER -->
 <footer>
   <div class="foot-inner">
-    <span>RECALL &mdash; Sui Overflow 2026 &nbsp;·&nbsp; Walrus Track</span>
+    <div class="foot-brand">
+      <div class="brand-name">RECALL</div>
+      <div class="brand-tag">Sui Overflow 2026 · Walrus Track</div>
+    </div>
     <div class="foot-links">
       <a href="docs.html">Docs</a>
-      <a href="article.html">Article</a>
+      <a href="article.html">Writing</a>
+      <a href="https://github.com/KZN-Labs/Recall" target="_blank" rel="noopener">GitHub</a>
     </div>
   </div>
 </footer>
 
 <script>
-// Typewriter
-(function(){
-  var el = document.getElementById('tw');
-  var txt = 'shared memory OS for AI agents.';
-  var i = 0;
-  function tick(){ if(i<=txt.length){ el.textContent=txt.slice(0,i++); setTimeout(tick,45); } }
-  setTimeout(tick, 500);
+// ── Hero terminal sequenced reveal ──
+(function() {
+  function show(id) {
+    var el = document.getElementById(id);
+    if (el) el.classList.add('on');
+  }
+  setTimeout(function() { show('t-install-ok'); }, 600);
+  setTimeout(function() { show('t-log-1'); },     1200);
+  setTimeout(function() { show('t-log-2'); },     1400);
+  setTimeout(function() { show('t-log-3'); },     1600);
 })();
 
-// Scroll reveals
-(function(){
+// ── Copy install command ──
+(function() {
+  var btn = document.getElementById('copy-btn');
+  if (!btn) return;
+  btn.addEventListener('click', function() {
+    var cmd = 'pip install recall';
+    var done = function() {
+      btn.textContent = 'copied';
+      btn.classList.add('copied');
+      setTimeout(function() {
+        btn.textContent = 'copy';
+        btn.classList.remove('copied');
+      }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(cmd).then(done, function() {
+        // fallback
+        var t = document.createElement('textarea');
+        t.value = cmd; document.body.appendChild(t); t.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(t);
+      });
+    } else {
+      var t = document.createElement('textarea');
+      t.value = cmd; document.body.appendChild(t); t.select();
+      try { document.execCommand('copy'); done(); } catch (e) {}
+      document.body.removeChild(t);
+    }
+  });
+})();
+
+// ── Scroll reveal ──
+(function() {
   var els = document.querySelectorAll('.reveal');
-  var io = new IntersectionObserver(function(entries){
-    entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('vis'); io.unobserve(e.target); } });
-  },{threshold:0.08});
-  els.forEach(function(el){ io.observe(el); });
+  if (!('IntersectionObserver' in window)) {
+    els.forEach(function(el) { el.classList.add('vis'); });
+    return;
+  }
+  var io = new IntersectionObserver(function(entries) {
+    entries.forEach(function(e) {
+      if (e.isIntersecting) {
+        e.target.classList.add('vis');
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.05 });
+  els.forEach(function(el) { io.observe(el); });
 })();
 </script>
 </body>
