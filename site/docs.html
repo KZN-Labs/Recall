@@ -428,6 +428,7 @@ p strong { color: var(--fg); font-weight: 500; }
       <a href="#sdk-ts">TypeScript SDK</a>
       <a href="#adapters">Framework Adapters</a>
       <a href="#cli">CLI Reference</a>
+      <a href="#registry">Registry</a>
       <a href="#architecture">Architecture</a>
       <a href="#memwal">MemWal</a>
       <a href="#contracts">Move Contracts</a>
@@ -852,6 +853,149 @@ Receipt trail for sarah@email.com in ws_customer-ops:
   [14:22:19] risk-agent       MEMORY_WRITE  global_risk_score=HIGH    trust=2  ✓
 
 Receipts anchored: Sui tx 8kPqR...mNzT3  (block 4821093)</div>
+    </section>
+
+    <!-- ── Registry ── -->
+    <section class="doc-section" id="registry">
+      <h1 class="section-title">Registry</h1>
+
+      <p>
+        The RECALL Registry is an npm-style directory for agent memory profiles.
+        When a team runs an agent in production for months, it accumulates
+        learned patterns — edge cases handled, workflows discovered, decisions
+        made. The Registry lets teams package that accumulated intelligence and
+        publish it. Any other team can import it and start with full context on
+        day one.
+      </p>
+
+      <p>
+        Every profile is stored immutably on Walrus. The blob ID is the
+        cryptographic proof that what you import today is identical to what was
+        published. Profiles cannot be modified after publishing — only versioned.
+        Publishing the same name and version twice is rejected.
+      </p>
+
+      <h2 style="font-family: var(--font-head); font-size: 24px; letter-spacing: 0.04em; color: var(--fg); margin: 56px 0 20px;">What a Profile Contains</h2>
+
+      <div class="code-block" style="background:#050505;">
+<pre>Memory entries      — everything the agent learned, as Walrus blobs
+Workflow artifacts  — step-by-step processes and decision patterns
+System prompt       — the recommended prompt to pair with this profile
+Workspace config    — suggested trust levels, agent roles, topology
+Version history     — all prior versions, permanently accessible
+Blob IDs            — cryptographic proof of authenticity per component</pre>
+      </div>
+
+      <h2 style="font-family: var(--font-head); font-size: 24px; letter-spacing: 0.04em; color: var(--fg); margin: 56px 0 20px;">Publishing</h2>
+
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">recall registry publish</span>
+          <span class="method-badge">CLI</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">
+            Packages a workspace memory snapshot and publishes it to the RECALL
+            Registry. The publish request is signed with the agent's Ed25519
+            passport keypair — authorship is cryptographically verified, not
+            self-reported. Publishing the same name@version twice is rejected.
+            To update a profile, publish a new version.
+          </div>
+          <div class="code-block"><pre>$ recall registry publish
+
+  Name:        fraud-detection-agent
+  Version:     1.0
+  Author:      pp_8f3a2c4e1d:support-agent
+  Category:    security
+  Workspace:   ws_acme-customer-ops
+  Memories:    847 entries
+
+  Publish? [y/N]: y
+
+  → Packaging workspace snapshot...
+  → Signing with passport pp_8f3a2c4e1d...
+  → Writing to Walrus...
+  ✓ Published fraud-detection-agent@1.0
+    blob: 0xf1a2b3c4...</pre></div>
+        </div>
+      </div>
+
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">recall.publish() — Python</span>
+          <span class="method-badge">SDK</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">SDK call. The client signs the canonical payload <code style="color:var(--fg)">"&lt;name&gt;@&lt;version&gt;:&lt;passport_id&gt;"</code> with its Ed25519 keypair before posting.</div>
+          <div class="code-block"><pre>profile = <span class="kw">await</span> recall.<span class="kw">publish</span>(
+    name=<span class="str">"fraud-detection-agent"</span>,
+    version=<span class="str">"1.0"</span>,
+    description=<span class="str">"Trained on fraud patterns across 847 cases"</span>,
+)</pre></div>
+        </div>
+      </div>
+
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">recall.publish() — TypeScript</span>
+          <span class="method-badge">SDK</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">Same flow in TypeScript. The SDK signs in-browser via <code style="color:var(--fg)">@noble/curves/ed25519</code>.</div>
+          <div class="code-block"><pre><span class="kw">const</span> profile = <span class="kw">await</span> recall.<span class="kw">publish</span>({
+  name:        <span class="str">'fraud-detection-agent'</span>,
+  version:     <span class="str">'1.0'</span>,
+  description: <span class="str">'Trained on fraud patterns across 847 cases'</span>,
+})</pre></div>
+        </div>
+      </div>
+
+      <h2 style="font-family: var(--font-head); font-size: 24px; letter-spacing: 0.04em; color: var(--fg); margin: 56px 0 20px;">Importing</h2>
+
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">recall registry import &lt;name@version&gt;</span>
+          <span class="method-badge">CLI</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">
+            Fetches a published profile from the Registry, verifies the Walrus
+            blob, and creates a new workspace pre-loaded with the profile's
+            memory entries and artifacts. The agent starts with the full
+            accumulated intelligence of the original on day one.
+          </div>
+          <div class="code-block"><pre>$ recall registry import fraud-detection-agent@1.0
+
+  → Fetching fraud-detection-agent@1.0...
+  → Verifying Walrus blob 0xf1a2b3c4...  ✓
+  → Loading 847 memory entries...
+  ✓ Workspace created: ws_fraud-detection-agent
+    memories pre-loaded: 847
+    agent ready</pre></div>
+        </div>
+      </div>
+
+      <h2 style="font-family: var(--font-head); font-size: 24px; letter-spacing: 0.04em; color: var(--fg); margin: 56px 0 20px;">Browsing</h2>
+
+      <div class="code-block"><pre>$ recall registry list
+
+  NAME                        VERSION  AUTHOR                          CATEGORY   MEMORIES
+  ────────────────────────────────────────────────────────────────────────────────────────
+  fraud-detection-agent       1.0      pp_8f3a2c4e1d:support-agent     security   847
+  ecommerce-support-agent     2.1      pp_4b3e9d8c2a:retail-agent      support    1,204
+  defi-risk-agent             0.9      pp_7a1c5e9f0b:quant-agent       finance    392</pre></div>
+
+      <h2 style="font-family: var(--font-head); font-size: 24px; letter-spacing: 0.04em; color: var(--fg); margin: 56px 0 20px;">Immutability</h2>
+
+      <p>
+        Every profile is stored on Walrus with a content-addressed blob ID.
+        The blob ID is derived from the content — if anything in the profile
+        changes, the blob ID changes. Publishing the same name and version
+        twice is rejected at the registry level with a conflict error. To
+        update a profile, publish a new version. The v1.0 published today is
+        cryptographically guaranteed to be identical to the v1.0 imported in
+        two years.
+      </p>
     </section>
 
     <!-- ── Architecture ── -->

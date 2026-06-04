@@ -186,6 +186,13 @@ class RecallClient:
     def __init__(self, http_endpoint: str = "http://localhost:8080"):
         self._http_endpoint = http_endpoint
         self._memwal = RecallMemWalClient()
+        # Global keypair used to sign publish() requests. The passport_id is
+        # derived from the public key so the server can verify authorship
+        # without requiring a separate enrollment step.
+        self._global_keypair = RecallKeypair.generate()
+        self._global_passport_id = sha256_hex(
+            self._global_keypair.public_key_bytes().hex().encode()
+        )
 
     async def connect(
         self,
@@ -267,25 +274,56 @@ class RecallClient:
         version: str,
         description: str = "",
         workspace_id: Optional[str] = None,
+        category: str = "",
     ) -> dict[str, Any]:
-        """Publish a workspace memory profile to the RECALL Registry."""
+        """Publish a workspace memory profile to the RECALL Registry.
+
+        Signs the canonical payload "<name>@<version>:<passport_id>" with the
+        client's Ed25519 keypair. The control plane verifies the signature
+        server-side — authorship cannot be forged.
+
+        Raises ValueError on 409 (already published — profiles are immutable).
+        Raises PermissionError on 401 (signature rejected).
+        """
+        message = f"{name}@{version}:{self._global_passport_id}".encode()
+        signature_hex  = self._global_keypair.sign_hex(message)
+        public_key_hex = self._global_keypair.public_key_bytes().hex()
+
         url = f"{self._http_endpoint}/registry"
         body = {
-            "name": name,
-            "version": version,
-            "description": description,
+            "name":         name,
+            "version":      version,
+            "description":  description,
+            "workspace_id": workspace_id,
+            "category":     category,
+            "passport_id":  self._global_passport_id,
+            "signature":    signature_hex,
+            "public_key":   public_key_hex,
         }
+
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(url, json=body)
+                if resp.status_code == 409:
+                    raise ValueError(
+                        f"{name}@{version} already published — "
+                        "profiles are immutable. publish a new version."
+                    )
+                if resp.status_code == 401:
+                    data = resp.json()
+                    raise PermissionError(
+                        f"publish rejected: {data.get('error', 'unauthorized')}"
+                    )
                 resp.raise_for_status()
                 return resp.json()  # type: ignore[no-any-return]
+        except (ValueError, PermissionError):
+            raise
         except Exception as exc:
             print(f"[recall] publish failed ({exc}) — returning local profile")
             return {
-                "name": name,
-                "version": version,
-                "description": description,
+                "name":         name,
+                "version":      version,
+                "description":  description,
                 "published_at": datetime.now(tz=timezone.utc).isoformat(),
-                "immutable": True,
+                "immutable":    True,
             }

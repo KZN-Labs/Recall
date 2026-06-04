@@ -123,6 +123,12 @@ impl Passport {
             .map(|exp| Utc::now() > exp)
             .unwrap_or(false)
     }
+
+    /// Hex-encoded Ed25519 public key as stored on this passport.
+    /// Used to verify signatures attributed to this passport.
+    pub fn public_key_hex(&self) -> String {
+        hex::encode(&self.public_key_bytes)
+    }
 }
 
 fn canonical_passport_bytes(msg: &proto::Passport) -> Vec<u8> {

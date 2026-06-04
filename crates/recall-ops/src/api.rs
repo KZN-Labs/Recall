@@ -93,11 +93,14 @@ pub struct RollbackResult {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PublishRequest {
-    pub name:        String,
-    pub version:     String,
-    pub author:      String,
-    pub category:    String,
-    pub description: String,
+    pub name:         String,
+    pub version:      String,
+    pub category:     String,
+    pub description:  String,
+    pub workspace_id: Option<String>,
+    pub passport_id:  String,
+    pub signature:    String,
+    pub public_key:   String,
 }
 
 // ── Client ────────────────────────────────────────────────────────────────────
@@ -194,7 +197,19 @@ impl ApiClient {
     pub async fn publish_registry(&self, req: &PublishRequest) -> Result<serde_json::Value> {
         let r = self.client.post(format!("{}/registry", self.base))
             .json(req).send().await?;
-        if !r.status().is_success() {
+        let status = r.status();
+        if status == reqwest::StatusCode::CONFLICT {
+            return Err(anyhow!(
+                "{}@{} already exists — profiles are immutable. publish a new version with --version <x.y>",
+                req.name, req.version
+            ));
+        }
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            let body: serde_json::Value = r.json().await.unwrap_or_default();
+            let msg = body.get("error").and_then(|v| v.as_str()).unwrap_or("unauthorized");
+            return Err(anyhow!("publish rejected: {msg}"));
+        }
+        if !status.is_success() {
             return Err(anyhow!("publish failed: {}", r.text().await?));
         }
         Ok(r.json().await?)

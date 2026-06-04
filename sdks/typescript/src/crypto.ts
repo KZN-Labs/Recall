@@ -39,3 +39,18 @@ export function sha256Hex(data: Uint8Array): string {
 export function sha256Bytes(data: Uint8Array): Uint8Array {
   return sha256(data)
 }
+
+/** Hex-encode raw bytes (no 0x prefix). */
+export function toHex(bytes: Uint8Array): string {
+  return bytesToHex(bytes)
+}
+
+/** Hex-decode a string into raw bytes. */
+export function fromHex(hex: string): Uint8Array {
+  return hexToBytes(hex)
+}
+
+/** Sign a message with a keypair, return hex-encoded Ed25519 signature. */
+export function signMessage(message: Uint8Array, keypair: Keypair): string {
+  return bytesToHex(sign(message, keypair.privateKey))
+}

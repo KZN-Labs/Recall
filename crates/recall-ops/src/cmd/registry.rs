@@ -98,6 +98,23 @@ pub async fn publish(api: &ApiClient) -> Result<()> {
 
     println!("{}", "\nPublish a memory profile to the RECALL Registry\n".white().bold());
 
+    // ── Load (or generate) the agent's signing keypair ───────────────────────
+    let identity = crate::key::load_or_create(None)?;
+    if identity.generated {
+        let path = crate::key::default_key_path()?;
+        println!(
+            "{} Generated new agent keypair at {}",
+            fmt::ok("✓"),
+            path.display().to_string().truecolor(140, 140, 140)
+        );
+        println!(
+            "  {}  {}",
+            fmt::label("passport:"),
+            (&identity.passport_id[..identity.passport_id.len().min(20)]).truecolor(140, 140, 140)
+        );
+        println!();
+    }
+
     let theme = ColorfulTheme::default();
 
     let workspaces = api.list_workspaces().await.unwrap_or_default();
@@ -110,10 +127,6 @@ pub async fn publish(api: &ApiClient) -> Result<()> {
     let version: String = Input::with_theme(&theme)
         .with_prompt("Version")
         .default("1.0".into())
-        .interact_text()?;
-
-    let author: String = Input::with_theme(&theme)
-        .with_prompt("Author")
         .interact_text()?;
 
     let categories = vec!["support", "security", "research", "finance", "healthcare", "other"];
@@ -139,9 +152,13 @@ pub async fn publish(api: &ApiClient) -> Result<()> {
         ws_names[ws_idx].clone()
     };
 
+    // Author is derived from the passport — not user-supplied.
+    let pp_short = &identity.passport_id[..identity.passport_id.len().min(12)];
+    let author   = format!("{}:cli-agent", pp_short);
+
     println!();
     println!("  {}  {}@{}", fmt::label("profile:"), name.white().bold(), version);
-    println!("  {}  {}", fmt::label("author: "), author);
+    println!("  {}  {}", fmt::label("author: "), author.truecolor(140, 140, 140));
     println!("  {}  {}", fmt::label("source: "), fmt::workspace_badge(&ws_label));
     println!();
     print!("  {} [y/N] ", "Publish?".green().bold());
@@ -155,12 +172,28 @@ pub async fn publish(api: &ApiClient) -> Result<()> {
         return Ok(());
     }
 
-    let req = PublishRequest { name: name.clone(), version: version.clone(), author, category, description };
+    // ── Sign the canonical publish payload ───────────────────────────────────
+    let message = format!("{}@{}:{}", name, version, identity.passport_id);
+    let signature_hex = hex::encode(identity.keypair.sign(message.as_bytes()).to_bytes());
+
+    let req = PublishRequest {
+        name:         name.clone(),
+        version:      version.clone(),
+        category,
+        description,
+        workspace_id: Some(ws_label.clone()),
+        passport_id:  identity.passport_id.clone(),
+        signature:    signature_hex,
+        public_key:   identity.public_key_hex.clone(),
+    };
+
     match api.publish_registry(&req).await {
-        Ok(_) => {
+        Ok(resp) => {
             println!();
             println!("{} Published {}@{}", fmt::ok("✓"), name.white().bold(), version);
-            println!("  {}  {}", fmt::label("blob id:"), fmt::blob("(stored on Walrus testnet)"));
+            if let Some(blob) = resp.get("walrus_blob_id").and_then(|v| v.as_str()) {
+                println!("  {}  {}", fmt::label("blob id:"), fmt::blob(blob));
+            }
             println!();
         }
         Err(e) => eprintln!("{} {}", fmt::err("✗"), e),

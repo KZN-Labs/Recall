@@ -14,7 +14,7 @@ import type {
   Receipt,
   RegistryProfile,
 } from './models'
-import { generateKeypair, sha256Hex } from './crypto'
+import { generateKeypair, sha256Hex, signMessage, toHex } from './crypto'
 
 export interface ConnectConfig {
   agent: string
@@ -158,9 +158,15 @@ export class WorkspaceHandle {
 
 export class RecallClient {
   private readonly endpoint: string
+  private readonly globalKeypair: ReturnType<typeof generateKeypair>
+  private readonly globalPassportId: string
 
   constructor(endpoint = DEFAULT_ENDPOINT) {
     this.endpoint = endpoint
+    this.globalKeypair = generateKeypair()
+    this.globalPassportId = sha256Hex(
+      new TextEncoder().encode(toHex(this.globalKeypair.publicKey))
+    )
   }
 
   /** Connect to a workspace. Returns a handle for read/write. */
@@ -216,13 +222,32 @@ export class RecallClient {
     }
   }
 
-  /** Publish a workspace memory profile to the RECALL Registry. */
+  /**
+   * Publish a workspace memory profile to the RECALL Registry.
+   *
+   * Signs the canonical payload `<name>@<version>:<passport_id>` with the
+   * client's Ed25519 keypair. The control plane verifies the signature
+   * server-side — authorship cannot be forged.
+   *
+   * Throws on 409 (already published — profiles are immutable).
+   * Throws on 401 (signature rejected).
+   */
   async publish(input: PublishInput): Promise<RegistryProfile> {
+    const message = new TextEncoder().encode(
+      `${input.name}@${input.version}:${this.globalPassportId}`
+    )
+    const signatureHex = signMessage(message, this.globalKeypair)
+    const publicKeyHex = toHex(this.globalKeypair.publicKey)
+
     const body = {
-      name: input.name,
-      version: input.version,
-      description: input.description ?? '',
+      name:         input.name,
+      version:      input.version,
+      description:  input.description ?? '',
       workspace_id: input.workspaceId,
+      category:     '',
+      passport_id:  this.globalPassportId,
+      signature:    signatureHex,
+      public_key:   publicKeyHex,
     }
 
     try {
@@ -232,40 +257,58 @@ export class RecallClient {
         body: JSON.stringify(body),
       })
 
+      if (resp.status === 409) {
+        throw new Error(
+          `${input.name}@${input.version} already published — profiles are immutable. publish a new version.`
+        )
+      }
+
+      if (resp.status === 401) {
+        const data = await resp.json().catch(() => ({}) as Record<string, unknown>)
+        throw new Error(`publish rejected: ${(data as { error?: string }).error ?? 'unauthorized'}`)
+      }
+
       if (resp.ok) {
         const data = await resp.json()
         return {
-          name: data.name ?? input.name,
-          version: data.version ?? input.version,
-          author: data.author ?? '',
-          category: data.category ?? '',
-          description: data.description ?? input.description ?? '',
-          memoryCount: data.memory_count ?? 0,
-          artifactCount: data.artifact_count ?? 0,
-          importCount: data.import_count ?? 0,
+          name:                    data.name ?? input.name,
+          version:                 data.version ?? input.version,
+          author:                  data.author ?? '',
+          category:                data.category ?? '',
+          description:             data.description ?? input.description ?? '',
+          memoryCount:             data.memory_count ?? 0,
+          artifactCount:           data.artifact_count ?? 0,
+          importCount:             data.import_count ?? 0,
           recommendedSystemPrompt: data.recommended_system_prompt ?? '',
-          publishedAt: data.published_at ?? new Date().toISOString(),
-          immutable: true,
-          walrusBlobId: data.walrus_blob_id,
+          publishedAt:             data.published_at ?? new Date().toISOString(),
+          immutable:               true,
+          walrusBlobId:            data.walrus_blob_id,
+          publisherPassportId:     data.publisher_passport_id,
         }
       }
     } catch (err) {
+      if (err instanceof Error && (
+        err.message.includes('already published') ||
+        err.message.includes('publish rejected')
+      )) {
+        throw err
+      }
       console.warn('[recall] publish failed, using local stub:', err)
     }
 
     // Fallback — control plane not reachable
     return {
-      name: input.name,
-      version: input.version,
-      author: '',
-      category: '',
-      description: input.description ?? '',
-      memoryCount: 0,
-      artifactCount: 0,
-      importCount: 0,
+      name:                    input.name,
+      version:                 input.version,
+      author:                  '',
+      category:                '',
+      description:             input.description ?? '',
+      memoryCount:             0,
+      artifactCount:           0,
+      importCount:             0,
       recommendedSystemPrompt: '',
-      publishedAt: new Date().toISOString(),
-      immutable: true,
+      publishedAt:             new Date().toISOString(),
+      immutable:               true,
     }
   }
 }

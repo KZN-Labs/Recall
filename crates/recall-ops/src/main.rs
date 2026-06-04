@@ -5,6 +5,7 @@ use colored::Colorize;
 mod api;
 mod cmd;
 mod fmt;
+mod key;
 
 use api::ApiClient;
 

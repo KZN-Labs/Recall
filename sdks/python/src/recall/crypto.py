@@ -36,6 +36,10 @@ class RecallKeypair:
     def sign(self, data: bytes) -> bytes:
         return self._private_key.sign(data)
 
+    def sign_hex(self, data: bytes) -> str:
+        """Sign message bytes. Returns hex-encoded Ed25519 signature."""
+        return self._private_key.sign(data).hex()
+
     def private_bytes(self) -> bytes:
         return self._private_key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
 

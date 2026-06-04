@@ -570,35 +570,153 @@ async fn rollback_workspace(
 
 #[derive(Deserialize)]
 struct PublishRegistryBody {
-    name:        String,
-    version:     String,
-    author:      String,
-    category:    String,
-    description: String,
+    name:         String,
+    version:      String,
+    #[serde(default)]
+    category:     String,
+    #[serde(default)]
+    description:  String,
+    workspace_id: Option<String>,
+    // Passport-based authorship — author is derived from passport, not request body.
+    passport_id:  String,
+    signature:    String,   // hex-encoded Ed25519 signature
+    public_key:   String,   // hex-encoded Ed25519 public key matching passport
+}
+
+/// Short 8-byte SHA-256 prefix as hex — used as a deterministic placeholder
+/// Walrus blob ID when no real Walrus publisher is configured.
+fn sha256_short(input: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let hash = Sha256::digest(input.as_bytes());
+    hex::encode(&hash[..8])
 }
 
 async fn publish_registry(
     State(state): State<Arc<AppState>>,
     Json(body): Json<PublishRegistryBody>,
 ) -> impl IntoResponse {
+    use ed25519_dalek::{Signature, VerifyingKey};
     use recall_proto::registry as reg_proto;
+
+    // ── 1. Decode public key ──────────────────────────────────────────────────
+    let pub_key_bytes = match hex::decode(&body.public_key) {
+        Ok(b) => b,
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                "error": "invalid public_key hex"
+            }))).into_response();
+        }
+    };
+    let verifying_key = match VerifyingKey::try_from(pub_key_bytes.as_slice()) {
+        Ok(k) => k,
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                "error": "invalid Ed25519 public key"
+            }))).into_response();
+        }
+    };
+
+    // ── 2. Decode signature ───────────────────────────────────────────────────
+    let sig_bytes = match hex::decode(&body.signature) {
+        Ok(b) => b,
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                "error": "invalid signature hex"
+            }))).into_response();
+        }
+    };
+    let signature = match Signature::try_from(sig_bytes.as_slice()) {
+        Ok(s) => s,
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                "error": "invalid signature format"
+            }))).into_response();
+        }
+    };
+
+    // ── 3. Verify signature over canonical message ────────────────────────────
+    let message = format!("{}@{}:{}", body.name, body.version, body.passport_id);
+    if verifying_key
+        .verify_strict(message.as_bytes(), &signature)
+        .is_err()
+    {
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({
+            "error": "signature verification failed — publish rejected"
+        }))).into_response();
+    }
+
+    // ── 4. Look up passport and verify public key matches what is on file ─────
+    let passport_hash = ContentHash(body.passport_id.clone());
+    let passport_opt  = state.passport_store.get(&passport_hash);
+    let agent_id_for_author = match passport_opt {
+        Some(p) => {
+            if p.public_key_hex() != body.public_key {
+                return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({
+                    "error": "public key does not match passport on file"
+                }))).into_response();
+            }
+            p.agent_id.0
+        }
+        None => {
+            // Strict mode would 401 here. For the hackathon we accept self-attested
+            // passports: the signature already proves the publisher controls the
+            // public key, and authorship is recorded against the resulting
+            // passport_id. Production deployments should flip this to a hard 401.
+            tracing::warn!(
+                "publish: passport {} not registered — accepting self-attested signature",
+                body.passport_id
+            );
+            "self-attested".to_string()
+        }
+    };
+
+    // ── 5. Derive author from passport (not user-supplied) ───────────────────
+    let pp_prefix_len = body.passport_id.len().min(12);
+    let author = format!("{}:{}", &body.passport_id[..pp_prefix_len], agent_id_for_author);
+
+    // ── 6. Compute memory_count from the actual workspace ────────────────────
+    let memory_count = if let Some(ref ws_id) = body.workspace_id {
+        state.memory_store.list_by_workspace(ws_id).len() as i64
+    } else {
+        0
+    };
+
+    // ── 7. Deterministic placeholder blob ID derived from content ────────────
+    let walrus_blob_id = format!(
+        "0x{}",
+        sha256_short(&format!("{}@{}:{}", body.name, body.version, body.passport_id))
+    );
+
     let profile = reg_proto::RegistryProfile {
         name:        body.name.clone(),
         version:     body.version.clone(),
-        author:      body.author.clone(),
+        author:      author.clone(),
         category:    body.category.clone(),
         description: body.description.clone(),
-        memory_count: state.memory_store.list_workspaces().len() as i64,
+        memory_count,
+        publisher_passport_id: body.passport_id.clone(),
+        walrus_blob: Some(common_proto::WalrusBlobRef { blob_id: walrus_blob_id.clone() }),
         immutable:   true,
         ..Default::default()
     };
+
     match state.registry_store.publish(profile.clone()) {
         Ok(()) => (StatusCode::CREATED, Json(serde_json::json!({
-            "name":    body.name,
-            "version": body.version,
-            "ok":      true,
+            "name":                  body.name,
+            "version":               body.version,
+            "author":                author,
+            "category":              body.category,
+            "description":           body.description,
+            "memory_count":          memory_count,
+            "walrus_blob_id":        walrus_blob_id,
+            "publisher_passport_id": body.passport_id,
+            "published_at":          chrono::Utc::now().to_rfc3339(),
+            "immutable":             true,
+            "ok":                    true,
         }))).into_response(),
-        Err(e) => (StatusCode::CONFLICT, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+        Err(e) => (StatusCode::CONFLICT, Json(serde_json::json!({
+            "error": e.to_string()
+        }))).into_response(),
     }
 }
 

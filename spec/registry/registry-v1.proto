@@ -23,6 +23,8 @@ message RegistryProfile {
   // Once published, profiles are immutable.
   bool immutable = 13;
   ComponentBlobIds component_blob_ids = 14;
+  // Cryptographic publisher identity — Ed25519 passport that signed the publish.
+  string publisher_passport_id = 15;
 }
 
 message WorkspaceConfig {

@@ -131,6 +131,7 @@ export interface RegistryProfile {
   }
   walrusBlob?: WalrusBlobRef
   walrusBlobId?: string
+  publisherPassportId?: string
   publishedAt?: string
   immutable: boolean
 }
