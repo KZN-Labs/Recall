@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RECALL — Writing</title>
+<title>RECALL — Article</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet">
@@ -72,6 +72,7 @@ nav.top .inner {
   font-family: var(--head);
   font-size: 22px;
   letter-spacing: 0.04em;
+  color: var(--fg);
 }
 .nav-links {
   display: flex;
@@ -246,13 +247,14 @@ footer a:hover { color: var(--fg); }
 <nav class="top">
   <div class="inner">
     <!-- drop logo.png into site/assets/ -->
-    <a href="index.html" aria-label="RECALL home">
+    <a href="index.html" aria-label="RECALL home" class="nav-logo-link">
       <img src="assets/logo.png" alt="RECALL" class="nav-logo"
-           onerror="this.outerHTML='<span class=&quot;nav-logo-fallback&quot;>RECALL</span>'">
+           onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
+      <span class="nav-logo-fallback" style="display:none;">RECALL</span>
     </a>
     <div class="nav-links">
       <a href="docs.html">Docs</a>
-      <a href="writing.html">Writing</a>
+      <a href="article.html">Article</a>
       <a href="https://github.com/KZN-Labs/Recall" target="_blank" rel="noopener">GitHub</a>
     </div>
   </div>
@@ -261,7 +263,7 @@ footer a:hover { color: var(--fg); }
 <div class="page" id="top">
 
   <!-- HEADER -->
-  <h1 class="page-title">WRITING</h1>
+  <h1 class="page-title">ARTICLE</h1>
   <p class="page-sub">Notes on building RECALL and thinking about AI agents.</p>
 
   <!-- ARTICLE LIST -->
@@ -491,7 +493,7 @@ footer a:hover { color: var(--fg); }
       production — try it, break it, and tell me where it's wrong.
     </p>
 
-    <a href="#top" class="back-link">&larr; BACK TO WRITING</a>
+    <a href="#top" class="back-link">&larr; BACK TO TOP</a>
   </article>
 
 </div>
@@ -502,7 +504,7 @@ footer a:hover { color: var(--fg); }
     <span>RECALL &mdash; Sui Overflow 2026 &nbsp;·&nbsp; Walrus Track</span>
     <div class="foot-links">
       <a href="docs.html">Docs</a>
-      <a href="writing.html">Writing</a>
+      <a href="article.html">Article</a>
     </div>
   </div>
 </footer>
