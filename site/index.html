@@ -237,6 +237,8 @@ section.hero { border-top: none; padding: 120px 0 100px; }
 }
 .install-pane { display: none; }
 .install-pane.active { display: block; }
+.how-pane { display: none; }
+.how-pane.active { display: block; }
 .copy-btn {
   font-family: var(--font);
   font-size: 11px;
@@ -639,14 +641,22 @@ footer {
     <div class="section-label">HOW IT WORKS</div>
     <h2 class="section-headline">Three lines of code.</h2>
 
+    <div class="install-tabs" role="tablist" aria-label="Language">
+      <button class="install-tab how-tab active" type="button" data-howtab="python"     role="tab" aria-selected="true">Python</button>
+      <button class="install-tab how-tab"        type="button" data-howtab="typescript" role="tab" aria-selected="false">TypeScript</button>
+      <button class="install-tab how-tab"        type="button" data-howtab="langgraph"  role="tab" aria-selected="false">LangGraph</button>
+    </div>
+
     <div class="terminal wide">
       <div class="term-bar">
         <div class="term-dots">
           <span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span>
         </div>
-        <div class="term-bar-title">agent.py</div>
+        <div class="term-bar-title" id="how-filename">agent.py</div>
       </div>
-      <div class="term-code"><span class="code-kw">import</span> recall
+
+      <!-- Python (default) -->
+      <div class="term-code how-pane active" data-howpane="python"><span class="code-kw">import</span> recall
 
 <span class="code-kw">async with</span> recall.connect(<span class="code-str">'my-workspace'</span>, agent=<span class="code-str">'support-agent'</span>, model=<span class="code-str">'claude-sonnet-4'</span>) <span class="code-kw">as</span> ws:
     <span class="code-cmt"># Read what other agents already know</span>
@@ -656,6 +666,36 @@ footer {
 
     <span class="code-cmt"># Write what you learned — persisted to Walrus, receipted, conflict-checked</span>
     <span class="code-kw">await</span> ws.<span class="code-fn">write</span>(entity=<span class="code-str">'sarah@email.com'</span>, event=<span class="code-str">'credit_offered'</span>, value=<span class="code-str">'10%'</span>)</div>
+
+      <!-- TypeScript -->
+      <div class="term-code how-pane" data-howpane="typescript"><span class="code-kw">import</span> { recall } <span class="code-kw">from</span> <span class="code-str">'@recall/sdk'</span>
+
+<span class="code-kw">const</span> ws = <span class="code-kw">await</span> recall.<span class="code-fn">connect</span>(<span class="code-str">'my-workspace'</span>, {
+  agent: <span class="code-str">'support-agent'</span>,
+  model: <span class="code-str">'gpt-4o'</span>,
+})
+
+<span class="code-cmt">// Read what other agents already know</span>
+<span class="code-kw">const</span> memory = <span class="code-kw">await</span> ws.<span class="code-fn">read</span>({ entity: <span class="code-str">'sarah@email.com'</span> })
+
+<span class="code-cmt">// Agent processes with full context...</span>
+
+<span class="code-cmt">// Write what you learned — persisted to Walrus, receipted, conflict-checked</span>
+<span class="code-kw">await</span> ws.<span class="code-fn">write</span>({ entity: <span class="code-str">'sarah@email.com'</span>, event: <span class="code-str">'credit_offered'</span>, value: <span class="code-str">'10%'</span> })</div>
+
+      <!-- LangGraph -->
+      <div class="term-code how-pane" data-howpane="langgraph"><span class="code-kw">from</span> recall <span class="code-kw">import</span> recall
+<span class="code-kw">from</span> recall.langgraph <span class="code-kw">import</span> RecallMemoryNode
+<span class="code-kw">from</span> langgraph.graph <span class="code-kw">import</span> StateGraph
+
+<span class="code-kw">async with</span> recall.connect(<span class="code-str">'my-workspace'</span>, agent=<span class="code-str">'support-agent'</span>, model=<span class="code-str">'claude-sonnet-4'</span>) <span class="code-kw">as</span> ws:
+    graph = StateGraph(AgentState)
+
+    <span class="code-cmt"># Drop in one node — every agent step now reads and writes shared memory</span>
+    graph.<span class="code-fn">add_node</span>(<span class="code-str">'memory'</span>, RecallMemoryNode(ws))
+    graph.<span class="code-fn">add_node</span>(<span class="code-str">'support'</span>, support_agent)
+    graph.<span class="code-fn">add_node</span>(<span class="code-str">'fraud'</span>,   fraud_agent)
+    graph.<span class="code-fn">add_edge</span>(<span class="code-str">'memory'</span>, <span class="code-str">'support'</span>)</div>
     </div>
 
     <div class="stats-row">
@@ -846,9 +886,9 @@ ws/acme  billing-agent    invoice_sent        john@example.com   14:22:19</div>
   setTimeout(function() { show('t-log-2'); }, 1300);
 })();
 
-// ── Install tabs ──
+// ── Install tabs (hero) ──
 (function() {
-  var tabs  = document.querySelectorAll('.install-tab');
+  var tabs  = document.querySelectorAll('.install-tab[data-tab]');
   var panes = document.querySelectorAll('.install-pane');
   tabs.forEach(function(tab) {
     tab.addEventListener('click', function() {
@@ -861,6 +901,28 @@ ws/acme  billing-agent    invoice_sent        john@example.com   14:22:19</div>
       panes.forEach(function(p) {
         p.classList.toggle('active', p.getAttribute('data-pane') === name);
       });
+    });
+  });
+})();
+
+// ── How-it-works tabs ──
+(function() {
+  var tabs  = document.querySelectorAll('.how-tab');
+  var panes = document.querySelectorAll('.how-pane');
+  var fname = document.getElementById('how-filename');
+  var fileNames = { python: 'agent.py', typescript: 'agent.ts', langgraph: 'graph.py' };
+  tabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      var name = tab.getAttribute('data-howtab');
+      tabs.forEach(function(t) {
+        var on = t === tab;
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      panes.forEach(function(p) {
+        p.classList.toggle('active', p.getAttribute('data-howpane') === name);
+      });
+      if (fname && fileNames[name]) fname.textContent = fileNames[name];
     });
   });
 })();
