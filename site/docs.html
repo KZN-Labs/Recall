@@ -411,7 +411,7 @@ p strong { color: var(--fg); font-weight: 500; }
     </a>
     <nav class="links">
       <a href="index.html">Home</a>
-      <a href="article.html">Article</a>
+      <a href="writing.html">Writing</a>
       <a href="https://github.com/KZN-Labs/Recall" target="_blank" rel="noopener">GitHub</a>
     </nav>
   </div>
@@ -425,8 +425,11 @@ p strong { color: var(--fg); font-weight: 500; }
       <a href="#overview">Overview</a>
       <a href="#quickstart">Quickstart</a>
       <a href="#sdk">SDK Reference</a>
+      <a href="#sdk-ts">TypeScript SDK</a>
+      <a href="#adapters">Framework Adapters</a>
       <a href="#cli">CLI Reference</a>
       <a href="#architecture">Architecture</a>
+      <a href="#memwal">MemWal</a>
       <a href="#contracts">Move Contracts</a>
       <a href="#roadmap">Roadmap</a>
     </nav>
@@ -574,6 +577,180 @@ print(capsule.receipt)  <span class="cmt"># anchored handoff receipt</span></pre
 
 print(pkg.name, pkg.memory_count)
 <span class="cmt"># fraud-detection-agent@1.0  847 memories</span></pre></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── TypeScript SDK ── -->
+    <section class="doc-section" id="sdk-ts">
+      <h1 class="section-title">TypeScript SDK</h1>
+
+      <p>Install: <code style="color:var(--fg); font-size:12px;">npm install @recall/sdk</code></p>
+
+      <!-- connect() -->
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">recall.connect()</span>
+          <span class="method-badge">CONNECTION</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">Initialize a connection to the RECALL control plane. Returns a workspace handle.</div>
+          <div class="code-block"><pre><span class="kw">import</span> { recall } <span class="kw">from</span> <span class="str">'@recall/sdk'</span>
+
+<span class="kw">const</span> ws = <span class="kw">await</span> recall.connect(<span class="str">'acme-customer-ops'</span>, {
+  agent: <span class="str">'support-agent'</span>,
+  model: <span class="str">'gpt-4o'</span>,
+  endpoint: <span class="str">'http://localhost:8080'</span>,
+})</pre></div>
+        </div>
+      </div>
+
+      <!-- read() -->
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">ws.read(input)</span>
+          <span class="method-badge">READ</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">Read all memory entries for an entity in this workspace.</div>
+          <div class="code-block"><pre><span class="kw">const</span> entries = <span class="kw">await</span> ws.read({ entity: <span class="str">'sarah@email.com'</span> })
+
+<span class="kw">for</span> (<span class="kw">const</span> e <span class="kw">of</span> entries) {
+  console.log(e.event, e.data, e.agentId, e.timestamp)
+}</pre></div>
+        </div>
+      </div>
+
+      <!-- write() -->
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">ws.write(input)</span>
+          <span class="method-badge">WRITE</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">Write a memory entry. Triggers governance, conflict detection, and receipt emission.</div>
+          <div class="code-block"><pre><span class="kw">const</span> receipt = <span class="kw">await</span> ws.write({
+  entity: <span class="str">'sarah@email.com'</span>,
+  event:  <span class="str">'fraud_assessment'</span>,
+  value:  { flagged: <span class="kw">true</span>, score: <span class="str">0.91</span> },
+  tags:   [<span class="str">'pii'</span>, <span class="str">'fraud'</span>],
+})
+
+console.log(receipt.id.hex)            <span class="cmt">// receipt ID</span>
+console.log(receipt.walrusBlob?.blobId) <span class="cmt">// Walrus blob ID</span></pre></div>
+        </div>
+      </div>
+
+      <!-- handoff() -->
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">recall.handoff(input)</span>
+          <span class="method-badge">HANDOFF</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">Package memory for an entity into a capsule and deliver it to another agent.</div>
+          <div class="code-block"><pre><span class="kw">const</span> capsule = <span class="kw">await</span> recall.handoff({
+  from:   <span class="str">'support-agent'</span>,
+  to:     <span class="str">'escalation-agent'</span>,
+  entity: <span class="str">'sarah@email.com'</span>,
+})</pre></div>
+        </div>
+      </div>
+
+      <!-- publish() -->
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">recall.publish(input)</span>
+          <span class="method-badge">REGISTRY</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">Publish the current workspace's memory as a versioned registry package.</div>
+          <div class="code-block"><pre><span class="kw">const</span> pkg = <span class="kw">await</span> recall.publish({
+  name:        <span class="str">'fraud-detection-agent'</span>,
+  version:     <span class="str">'1.0'</span>,
+  description: <span class="str">'6 months production memory'</span>,
+})</pre></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Framework Adapters ── -->
+    <section class="doc-section" id="adapters">
+      <h1 class="section-title">Framework Adapters</h1>
+
+      <p>RECALL ships with first-class adapters for the major Python agent frameworks. Each adapter wraps a connected workspace, so the agent inherits shared memory, governance, conflict detection, and receipts with zero plumbing.</p>
+
+      <!-- LangGraph -->
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">LangGraph</span>
+          <span class="method-badge">pip install 'recall[langgraph]'</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">A <code style="color:var(--fg)">RecallMemoryNode</code> you can drop into any LangGraph <code style="color:var(--fg)">StateGraph</code>. Reads memory for the current entity into state, exposes <code style="color:var(--fg)">.write()</code> for writes.</div>
+          <div class="code-block"><pre><span class="kw">from</span> recall <span class="kw">import</span> recall
+<span class="kw">from</span> recall.langgraph <span class="kw">import</span> RecallMemoryNode
+<span class="kw">from</span> langgraph.graph <span class="kw">import</span> StateGraph
+
+<span class="kw">async with</span> recall.connect(<span class="str">"customer-ops"</span>, agent=<span class="str">"my-agent"</span>, model=<span class="str">"claude-sonnet-4"</span>) <span class="kw">as</span> ws:
+    graph = StateGraph(AgentState)
+    graph.add_node(<span class="str">"memory"</span>, RecallMemoryNode(ws))
+    <span class="cmt"># state["recall_memory"] now holds entries for state["entity"]</span></pre></div>
+        </div>
+      </div>
+
+      <!-- CrewAI -->
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">CrewAI</span>
+          <span class="method-badge">pip install 'recall[crewai]'</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">A <code style="color:var(--fg)">RecallMemoryTool</code> for CrewAI agents. The tool exposes read/write operations against the shared workspace.</div>
+          <div class="code-block"><pre><span class="kw">from</span> recall <span class="kw">import</span> recall
+<span class="kw">from</span> recall.crewai <span class="kw">import</span> RecallMemoryTool
+<span class="kw">from</span> crewai <span class="kw">import</span> Agent
+
+workspace = <span class="kw">await</span> recall.connect(<span class="str">"customer-ops"</span>, agent=<span class="str">"crew-agent"</span>, model=<span class="str">"claude-sonnet-4"</span>)
+tool = RecallMemoryTool(workspace)
+
+agent = Agent(role=<span class="str">"support"</span>, tools=[tool], goal=<span class="str">"resolve customer cases"</span>)</pre></div>
+        </div>
+      </div>
+
+      <!-- OpenAI Agents -->
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">OpenAI Agents</span>
+          <span class="method-badge">pip install 'recall[openai-agents]'</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">A <code style="color:var(--fg)">RecallMemoryContext</code> for the OpenAI Agents SDK. Pass it through the run context so any agent step can read and write shared memory.</div>
+          <div class="code-block"><pre><span class="kw">from</span> recall <span class="kw">import</span> recall
+<span class="kw">from</span> recall.openai_agents <span class="kw">import</span> RecallMemoryContext
+
+workspace = <span class="kw">await</span> recall.connect(<span class="str">"customer-ops"</span>, agent=<span class="str">"oa-agent"</span>, model=<span class="str">"gpt-4o"</span>)
+memory = RecallMemoryContext(workspace)
+
+entries = <span class="kw">await</span> memory.read(<span class="str">"sarah@email.com"</span>)
+<span class="kw">await</span> memory.write(<span class="str">"sarah@email.com"</span>, <span class="str">"credit_offered"</span>, <span class="str">"10%"</span>)</pre></div>
+        </div>
+      </div>
+
+      <!-- MAF -->
+      <div class="method">
+        <div class="method-header">
+          <span class="method-name">Microsoft Agent Framework</span>
+          <span class="method-badge">pip install 'recall[maf]'</span>
+        </div>
+        <div class="method-body">
+          <div class="method-desc">Use a connected workspace directly inside an MAF agent. Read on entry, write on exit — same pattern as the other adapters.</div>
+          <div class="code-block"><pre><span class="kw">from</span> recall <span class="kw">import</span> recall
+
+<span class="kw">async with</span> recall.connect(<span class="str">"customer-ops"</span>, agent=<span class="str">"maf-agent"</span>, model=<span class="str">"gpt-4o"</span>) <span class="kw">as</span> ws:
+    memory = <span class="kw">await</span> ws.read(entity=<span class="str">"sarah@email.com"</span>)
+    <span class="cmt"># ... MAF agent reasoning, given memory ...</span>
+    <span class="kw">await</span> ws.write(entity=<span class="str">"sarah@email.com"</span>, event=<span class="str">"contact_made"</span>, value=<span class="kw">True</span>)</pre></div>
         </div>
       </div>
     </section>
@@ -728,6 +905,35 @@ Receipts anchored: Sui tx 8kPqR...mNzT3  (block 4821093)</div>
           Memory blobs are encrypted using workspace-scoped keys managed by the Seal key server. Decryption requires the agent to hold a valid passport that has been admitted to the workspace policy on Sui.
         </li>
       </ul>
+    </section>
+
+    <!-- ── MemWal ── -->
+    <section class="doc-section" id="memwal">
+      <h1 class="section-title">MemWal</h1>
+
+      <p>
+        RECALL uses <strong>MemWal (Walrus Memory)</strong> as the persistent
+        storage layer for agent memory. Every memory write is stored as a
+        permanent, verifiable blob on Walrus. Every read query can also use
+        MemWal's semantic search to surface relevant context. Sign up at
+        <a href="https://memory.walrus.xyz/" target="_blank" rel="noopener" style="color:var(--fg)">memory.walrus.xyz</a>
+        to get your credentials.
+      </p>
+
+      <p>Two environment variables enable MemWal in any RECALL deployment:</p>
+
+      <div class="code-block" style="margin-top:16px;">
+<pre>MEMWAL_PRIVATE_KEY=your-ed25519-private-key
+MEMWAL_ACCOUNT_ID=your-memwal-account-id</pre>
+      </div>
+
+      <p style="margin-top:24px;">
+        RECALL works without these — memory is still stored in the control
+        plane and survives in-process. But with MemWal configured, every
+        write becomes a permanent Walrus blob with a verifiable blob ID,
+        attached to the receipt and queryable independently of the control
+        plane.
+      </p>
     </section>
 
     <!-- ── Move Contracts ── -->

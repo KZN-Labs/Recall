@@ -51,6 +51,8 @@ export interface PublishInput {
   workspaceId?: string
 }
 
+const DEFAULT_ENDPOINT = 'http://localhost:8080'
+
 export class WorkspaceHandle {
   private readonly workspaceId: string
   private readonly agentId: string
@@ -68,58 +70,71 @@ export class WorkspaceHandle {
 
   /** Read all memory entries for an entity in this workspace. */
   async read(input: ReadInput): Promise<MemoryEntry[]> {
-    const endpoint = this.config.endpoint ?? 'http://localhost:9090'
+    const endpoint = this.config.endpoint ?? DEFAULT_ENDPOINT
     try {
-      const resp = await fetch(`${endpoint}/memory/${this.workspaceId}/${encodeURIComponent(input.entity)}`, {
-        headers: { Authorization: `Bearer ${this.config.apiKey ?? ''}` },
-      })
+      const resp = await fetch(
+        `${endpoint}/memory/${this.workspaceId}/${encodeURIComponent(input.entity)}`,
+        { headers: { Authorization: `Bearer ${this.config.apiKey ?? ''}` } }
+      )
       if (!resp.ok) return []
       return await resp.json()
-    } catch {
+    } catch (err) {
+      console.warn('[recall] read failed, returning empty array:', err)
       return []
     }
   }
 
   /** Write a memory entry. Returns the emitted receipt. */
   async write(input: WriteInput): Promise<Receipt> {
-    const endpoint = this.config.endpoint ?? 'http://localhost:9090'
+    const endpoint = this.config.endpoint ?? DEFAULT_ENDPOINT
     const data: Record<string, unknown> = { value: input.value, ...input.metadata }
     const ts = new Date().toISOString()
-    const receiptId = sha256Hex(new TextEncoder().encode(`${this.agentId}:${input.event}:${ts}`))
+    const fallbackReceiptId = sha256Hex(
+      new TextEncoder().encode(`${this.agentId}:${input.event}:${ts}`)
+    )
 
-    const entry: Partial<MemoryEntry> = {
-      id: `mem_${crypto.randomUUID()}`,
-      workspaceId: { value: this.workspaceId },
-      entity: input.entity,
-      agentId: { value: this.agentId },
-      passportId: { hex: this.passportId },
-      modelProvider: 'anthropic',
-      modelName: this.config.model,
-      trustLevel: this.config.trustLevel ?? 2,
+    const body = {
+      agent_id: this.agentId,
+      passport_id: this.passportId,
       event: input.event,
-      data,
+      value: input.value,
+      metadata: input.metadata,
       tags: input.tags ?? [],
       scope: input.scope ?? 'internal',
-      timestamp: ts,
-      sealStatus: 'UNSEALED',
-      causalPredecessors: [],
-      unmetCaveats: [],
+      model_provider: 'anthropic',
+      model_name: this.config.model,
+      trust_level: this.config.trustLevel ?? 2,
     }
+
+    let receiptId = fallbackReceiptId
+    let walrusBlobId: string | undefined
 
     try {
-      await fetch(`${endpoint}/memory`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.config.apiKey ?? ''}`,
-        },
-        body: JSON.stringify(entry),
-      })
-    } catch {
-      // Server not available — still return a local receipt stub.
+      const resp = await fetch(
+        `${endpoint}/memory/${this.workspaceId}/${encodeURIComponent(input.entity)}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.config.apiKey ?? ''}`,
+          },
+          body: JSON.stringify(body),
+        }
+      )
+      if (resp.ok) {
+        const result = await resp.json()
+        receiptId = result.receipt_id ?? fallbackReceiptId
+        walrusBlobId = result.walrus_blob_id
+      }
+    } catch (err) {
+      console.warn('[recall] write failed, returning local receipt stub:', err)
     }
 
-    return {
+    // Silence the unused-var warning while keeping `data` available for future
+    // local-only persistence implementations.
+    void data
+
+    const receipt: Receipt = {
       id: { hex: receiptId },
       actionKind: 'memory.write',
       workspaceId: { value: this.workspaceId },
@@ -132,24 +147,64 @@ export class WorkspaceHandle {
       unmetCaveats: [],
       reputationDelta: 0,
     }
+
+    if (walrusBlobId) {
+      receipt.walrusBlob = { blobId: walrusBlobId }
+    }
+
+    return receipt
   }
 }
 
 export class RecallClient {
   private readonly endpoint: string
 
-  constructor(endpoint = 'http://localhost:9090') {
+  constructor(endpoint = DEFAULT_ENDPOINT) {
     this.endpoint = endpoint
   }
 
   /** Connect to a workspace. Returns a handle for read/write. */
   async connect(workspaceName: string, config: ConnectConfig): Promise<WorkspaceHandle> {
     const workspaceId = `ws_${workspaceName}`
-    return new WorkspaceHandle(workspaceId, { ...config, endpoint: config.endpoint ?? this.endpoint })
+    return new WorkspaceHandle(workspaceId, {
+      ...config,
+      endpoint: config.endpoint ?? this.endpoint,
+    })
   }
 
   /** Hand off entity memory from one agent to another. */
   async handoff(input: HandoffInput): Promise<HandoffCapsule> {
+    const body = {
+      from_agent_id: input.from,
+      to_agent_id: input.to,
+      entity: input.entity,
+      workspace_id: input.workspaceId ?? 'ws_default',
+    }
+
+    try {
+      const resp = await fetch(`${this.endpoint}/handoff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      if (resp.ok) {
+        const data = await resp.json()
+        return {
+          id: data.capsule_id ?? `capsule_${crypto.randomUUID()}`,
+          fromAgentId: { value: input.from },
+          toAgentId: { value: input.to },
+          entity: input.entity,
+          workspaceId: { value: input.workspaceId ?? 'ws_default' },
+          memorySnapshot: data.memory_snapshot ?? [],
+          createdAt: data.created_at ?? new Date().toISOString(),
+        }
+      }
+    } catch (err) {
+      console.warn('[recall] handoff failed, using local stub:', err)
+    }
+
+    // Fallback — control plane not reachable
     return {
       id: `capsule_${crypto.randomUUID()}`,
       fromAgentId: { value: input.from },
@@ -163,6 +218,42 @@ export class RecallClient {
 
   /** Publish a workspace memory profile to the RECALL Registry. */
   async publish(input: PublishInput): Promise<RegistryProfile> {
+    const body = {
+      name: input.name,
+      version: input.version,
+      description: input.description ?? '',
+      workspace_id: input.workspaceId,
+    }
+
+    try {
+      const resp = await fetch(`${this.endpoint}/registry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      if (resp.ok) {
+        const data = await resp.json()
+        return {
+          name: data.name ?? input.name,
+          version: data.version ?? input.version,
+          author: data.author ?? '',
+          category: data.category ?? '',
+          description: data.description ?? input.description ?? '',
+          memoryCount: data.memory_count ?? 0,
+          artifactCount: data.artifact_count ?? 0,
+          importCount: data.import_count ?? 0,
+          recommendedSystemPrompt: data.recommended_system_prompt ?? '',
+          publishedAt: data.published_at ?? new Date().toISOString(),
+          immutable: true,
+          walrusBlobId: data.walrus_blob_id,
+        }
+      }
+    } catch (err) {
+      console.warn('[recall] publish failed, using local stub:', err)
+    }
+
+    // Fallback — control plane not reachable
     return {
       name: input.name,
       version: input.version,

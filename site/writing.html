@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RECALL — Writing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0a0a0a;
+  --surface:   #111111;
+  --hover-bg:  #0d0d0d;
+  --border:    #1e1e1e;
+  --border-hi: #2a2a2a;
+  --fg:        #ffffff;
+  --mid:       #888888;
+  --faint:     #444444;
+  --font:      'Geist Mono', ui-monospace, 'SF Mono', Menlo, Monaco, monospace;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a { color: inherit; text-decoration: none; }
+
+.wrap {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ── NAV (mirrors index.html) ── */
+.nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 72px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+}
+.nav-inner {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.nav-brand { display: flex; align-items: center; gap: 10px; }
+.nav-logo {
+  height: 52px;
+  width: auto;
+  display: block;
+  filter: invert(1);
+}
+.nav-brand-text {
+  display: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg);
+}
+.nav-links {
+  display: flex;
+  gap: 28px;
+  font-size: 13px;
+  color: var(--mid);
+}
+.nav-links a { transition: color 0.12s; }
+.nav-links a:hover { color: var(--fg); }
+
+main { padding-top: 72px; }
+
+/* ── HEADER ── */
+.page-header {
+  padding: 120px 0 80px;
+  border-bottom: 1px solid var(--border);
+}
+
+.section-label {
+  font-size: 13px;
+  letter-spacing: 0.15em;
+  color: var(--faint);
+  text-transform: uppercase;
+  margin-bottom: 32px;
+}
+
+.page-headline {
+  font-size: 48px;
+  font-weight: 500;
+  color: var(--fg);
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+
+.page-sub {
+  font-size: 14px;
+  color: var(--mid);
+  margin-top: 16px;
+}
+
+/* ── ARTICLE LIST ── */
+.list-section {
+  padding: 24px 0 80px;
+}
+
+.article-row {
+  display: grid;
+  grid-template-columns: 100px 1fr 80px;
+  gap: 24px;
+  padding: 28px 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+  align-items: start;
+}
+.article-row:hover { background: var(--hover-bg); }
+
+.article-row .a-date {
+  font-size: 12px;
+  color: var(--faint);
+  padding-top: 3px;
+}
+.article-row .a-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--fg);
+  display: block;
+  margin-bottom: 6px;
+}
+.article-row .a-desc {
+  font-size: 13px;
+  color: var(--mid);
+  line-height: 1.6;
+}
+.article-row .a-read {
+  font-size: 12px;
+  color: var(--faint);
+  text-align: right;
+  padding-top: 3px;
+  transition: color 0.12s;
+}
+.article-row:hover .a-read { color: var(--fg); }
+
+/* ── FULL ARTICLE ── */
+.article-section {
+  padding-top: 100px;
+  padding-bottom: 96px;
+  border-top: 1px solid var(--border);
+}
+
+.back-link {
+  font-size: 12px;
+  color: var(--mid);
+  display: inline-block;
+  margin-bottom: 48px;
+  transition: color 0.12s;
+}
+.back-link:hover { color: var(--fg); }
+
+.article-meta {
+  font-size: 12px;
+  color: var(--faint);
+  margin-bottom: 16px;
+}
+
+.article-title {
+  font-size: clamp(32px, 6vw, 52px);
+  font-weight: 500;
+  color: var(--fg);
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+
+.article-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 32px 0;
+}
+
+.article-body {
+  max-width: 660px;
+}
+.article-body p {
+  font-size: 14px;
+  color: var(--mid);
+  line-height: 1.95;
+  margin-bottom: 24px;
+}
+.article-body p strong { color: var(--fg); font-weight: 500; }
+
+.article-body h2 {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--fg);
+  margin-top: 56px;
+  margin-bottom: 20px;
+  letter-spacing: 0.01em;
+}
+
+/* ── FOOTER ── */
+footer {
+  padding: 48px 0;
+  border-top: 1px solid var(--border);
+}
+.foot-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+.foot-brand .brand-name {
+  font-size: 13px;
+  color: var(--fg);
+  margin-bottom: 4px;
+}
+.foot-brand .brand-tag {
+  font-size: 12px;
+  color: var(--faint);
+}
+.foot-links {
+  display: flex;
+  gap: 24px;
+  font-size: 12px;
+  color: var(--mid);
+}
+.foot-links a { transition: color 0.12s; }
+.foot-links a:hover { color: var(--fg); }
+
+@media (max-width: 600px) {
+  .page-headline { font-size: 36px; }
+  .article-row { grid-template-columns: 1fr; gap: 8px; }
+  .article-row .a-read { display: none; }
+  .article-row .a-date { padding-top: 0; font-size: 11px; }
+  .nav-links a[data-mobile-hide] { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<header class="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-brand" aria-label="RECALL home">
+      <!-- drop logo.png into site/assets/ -->
+      <img src="assets/logo.jpg" alt="RECALL" class="nav-logo"
+           onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
+      <span class="nav-brand-text">RECALL</span>
+    </a>
+    <nav class="nav-links">
+      <a href="docs.html">Docs</a>
+      <a href="writing.html">Writing</a>
+      <a href="https://github.com/KZN-Labs/Recall" target="_blank" rel="noopener" data-mobile-hide>GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- HEADER -->
+  <section class="page-header">
+    <div class="wrap">
+      <div class="section-label">WRITING</div>
+      <h1 class="page-headline">Notes on building RECALL.</h1>
+      <p class="page-sub">On AI agents, shared memory, and why verifiability matters.</p>
+    </div>
+  </section>
+
+  <!-- ARTICLE LIST -->
+  <section class="list-section">
+    <div class="wrap">
+
+      <!-- Add new articles by copying a row below. -->
+      <a href="#article-01" class="article-row">
+        <div class="a-date">Jun 2026</div>
+        <div>
+          <span class="a-title">The Missing Piece</span>
+          <div class="a-desc">Why AI agents forget, contradict each other, and why nothing is auditable.</div>
+        </div>
+        <div class="a-read">read →</div>
+      </a>
+
+    </div>
+  </section>
+
+  <!-- FULL ARTICLE -->
+  <section class="article-section" id="article-01">
+    <div class="wrap">
+
+      <a href="#top" class="back-link">← all writing</a>
+
+      <div class="article-meta">June 2026</div>
+      <h1 class="article-title">The Missing Piece</h1>
+      <hr class="article-divider">
+
+      <div class="article-body">
+
+        <p>
+          Building one AI agent is trivially easy now. Getting a group of them
+          to actually remember anything, agree on anything, or be auditable
+          afterward — that's the unsolved part.
+        </p>
+
+        <p>
+          The moment you have several agents collaborating on a real problem,
+          three things break immediately.
+        </p>
+
+        <h2>They Forget</h2>
+
+        <p>
+          Every session starts blank. An agent that spent six months learning
+          your customers, your edge cases, your patterns — gone the moment
+          the context window closes. The next session, it starts from zero.
+          You're not running an agent. You're running a very expensive
+          stateless function.
+        </p>
+
+        <h2>They Contradict Each Other</h2>
+
+        <p>
+          Support approves a credit. Fraud flags the same customer two
+          minutes later. Billing processes the credit anyway. None of them
+          knew what the others did. Nobody wrote it down. The customer
+          calls back tomorrow with the same problem, and the cycle starts
+          again. This isn't a hypothetical — it's the default behavior of
+          every multi-agent system in production today.
+        </p>
+
+        <h2>Nothing Is Auditable</h2>
+
+        <p>
+          When an agent makes a wrong decision, the answer to "why did it do
+          that?" is almost always: we don't know. The memory that informed
+          the decision lived in a context window, got flushed, and is gone.
+          In regulated industries this is becoming a compliance crisis.
+          Regulators are starting to ask for decision trails. Current agent
+          architectures cannot provide them.
+        </p>
+
+        <p>
+          So I built the missing piece. It's called RECALL — a shared memory
+          operating system for AI agents.
+        </p>
+
+        <h2>What RECALL Actually Is</h2>
+
+        <p>
+          RECALL isn't another agent framework. It sits underneath the agents
+          you already have — any model, any framework, any team — and gives
+          them one thing they don't have: a shared, governed, permanent
+          memory layer.
+        </p>
+
+        <p>
+          Every agent reads the workspace before responding. Every agent
+          writes to it after acting. The workspace becomes the single source
+          of truth for everything that has happened with a given customer,
+          case, or context. When agent B acts, it knows what agent A already
+          did. When agent C contradicts agent B, RECALL catches it
+          immediately — before damage, not after.
+        </p>
+
+        <p>Four things make this work:</p>
+
+        <p>
+          <strong>Shared workspaces</strong> — multiple agents, one memory
+          context. Support, Fraud, and Billing all read from the same
+          workspace. No more silos. No more agents working blind.
+        </p>
+
+        <p>
+          <strong>Conflict detection</strong> — when two agents write
+          contradictory signals about the same entity, RECALL detects the
+          contradiction, stores both writes permanently, and surfaces it for
+          resolution. The higher-trust agent's signal takes precedence for
+          auto-resolution, but nothing is silently overwritten. Every
+          conflict is logged. Every resolution is receipted.
+        </p>
+
+        <p>
+          <strong>Cryptographic receipts</strong> — every memory write
+          produces a content-addressed, signed, append-only receipt. Receipt
+          ID is the SHA-256 of the canonical serialization. When someone
+          asks "why did the agent make that decision" — you walk the receipt
+          DAG. The answer is always there.
+        </p>
+
+        <p>
+          <strong>The registry</strong> — there's no npm for agent
+          intelligence. A team spends six months training an agent. It
+          learns edge cases, builds patterns, gets good. That work lives in
+          a private codebase, undocumented, non-transferable. Another team
+          solving the same problem starts from scratch. RECALL's registry
+          fixes this. Publish your agent's accumulated memory once. Any team
+          imports it and starts with full context — permanently stored on
+          Walrus, cryptographically immutable. The quality guarantee is
+          on-chain.
+        </p>
+
+        <h2>Why the Storage Choice Matters</h2>
+
+        <p>
+          Every design decision in RECALL flows from one principle: memory
+          must be verifiable.
+        </p>
+
+        <p>
+          When an agent makes a decision, the memory that informed that
+          decision must exist as a permanent, tamper-proof record that
+          anyone authorized can inspect. This is impossible with centralized
+          storage. A database entry can be modified. A log can be altered.
+          A blob on Walrus cannot.
+        </p>
+
+        <p>
+          Walrus provides permanence — blobs are stored for their encoded
+          duration, retrievable forever. Content-addressed storage means
+          the blob ID is a cryptographic proof of content. Every memory
+          write in RECALL is a Walrus blob. Every receipt batch has its
+          Merkle root anchored on Sui. No agent data goes on-chain — only
+          hashes. But those hashes mean any party can independently verify
+          the full decision trail without trusting the control plane.
+        </p>
+
+        <p>
+          Governance rules live in Move contracts on Sui. The control plane
+          cannot override them. Rules like "PII cannot be written to
+          external scope" or "low-trust agents require supervisor
+          countersign" are not config files. They're enforced by the Move
+          verifier.
+        </p>
+
+        <h2>What You'd Build With It</h2>
+
+        <p>
+          <strong>Customer operations</strong> — support, billing, and fraud
+          agents sharing a workspace. Support resolutions inform billing
+          decisions. Fraud flags prevent credits from being exploited.
+          Compliance exports audit reports in minutes, not weeks.
+        </p>
+
+        <p>
+          <strong>DeFi coordination</strong> — research, risk, and execution
+          agents where every order is traceable to the exact memory that
+          informed it. Every market observation, every risk assessment,
+          permanently receipted.
+        </p>
+
+        <p>
+          <strong>Healthcare triage</strong> — diagnostic agents where
+          contradictory assessments are flagged for human review before any
+          recommendation is made. The full decision trail available for
+          medical audit.
+        </p>
+
+        <p>
+          <strong>Any regulated work</strong> — finance, insurance, legal —
+          where you need to prove afterward exactly what happened, which
+          agent decided it, what memory it was operating on, and under
+          which governance rules.
+        </p>
+
+        <h2>The CLI Is the Product</h2>
+
+        <p>
+          Developers don't need a dashboard. They need answers. RECALL ships
+          as a CLI first.
+        </p>
+
+        <p>
+          <strong>recall logs</strong> — stream every agent write in real time.
+        </p>
+        <p>
+          <strong>recall failures</strong> — surface every conflict and
+          denied write instantly.
+        </p>
+        <p>
+          <strong>recall why --entity &lt;id&gt;</strong> — walk the full
+          receipt trail for any entity.
+        </p>
+        <p>
+          <strong>recall inspect &lt;id&gt;</strong> — deep dive on any
+          receipt, memory entry, or conflict.
+        </p>
+        <p>
+          <strong>recall export --entity &lt;id&gt;</strong> — generate a PDF
+          audit trail for compliance.
+        </p>
+
+        <p>
+          The dashboard is just proof it works. The CLI is how you actually
+          use it.
+        </p>
+
+        <h2>Where It Stands</h2>
+
+        <p>
+          Early. One developer, built with Claude Code, submitted to Sui
+          Overflow 2026 on the Walrus track. The core runs end-to-end —
+          shared workspaces, conflict detection, cryptographic receipts,
+          the CLI, the registry. Walrus and Sui integrations are live on
+          testnet. Seal encryption is next. No company, no token, nothing
+          to sign up for.
+        </p>
+
+        <p>
+          Apache 2.0. The site is honest about what's built and what's coming.
+        </p>
+
+        <p>
+          If you work with AI agents — especially multiple agents,
+          especially in production — try it, break it, and tell me where
+          it's wrong.
+        </p>
+
+      </div>
+
+      <div style="padding-top:80px;">
+        <a href="#top" class="back-link">← all writing</a>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<!-- FOOTER -->
+<footer>
+  <div class="foot-inner">
+    <div class="foot-brand">
+      <div class="brand-name">RECALL</div>
+      <div class="brand-tag">Sui Overflow 2026 · Walrus Track</div>
+    </div>
+    <div class="foot-links">
+      <a href="docs.html">Docs</a>
+      <a href="writing.html">Writing</a>
+      <a href="https://github.com/KZN-Labs/Recall" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

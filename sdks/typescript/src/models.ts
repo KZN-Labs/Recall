@@ -130,6 +130,7 @@ export interface RegistryProfile {
     constitutionVersion: string
   }
   walrusBlob?: WalrusBlobRef
+  walrusBlobId?: string
   publishedAt?: string
   immutable: boolean
 }

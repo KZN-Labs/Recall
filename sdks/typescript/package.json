@@ -15,7 +15,8 @@
   "files": ["dist", "src"],
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx src/client.test.ts"
   },
   "dependencies": {
     "@noble/curves": "^1.4.0",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "tsup": "^8.0.0",
+    "tsx": "^4.7.0",
     "typescript": "^5.4.0"
   }
 }
