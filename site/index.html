@@ -780,6 +780,73 @@ ws/acme  billing-agent    invoice_sent        john@example.com   14:22:19</div>
   </div>
 </section>
 
+<!-- REGISTRY -->
+<section class="reveal">
+  <div class="wrap">
+    <div class="section-label">THE REGISTRY</div>
+    <h2 class="section-headline">npm for agent intelligence.</h2>
+    <p class="section-sub">
+      Publish a workspace's memory as a versioned, immutable package on Walrus.
+      Any team can import it and start with the full accumulated context — no
+      retraining, no copy-paste, no manual seeding. Authorship is signed by the
+      publishing agent's Ed25519 passport, verified server-side.
+    </p>
+
+    <div class="cli-list">
+
+      <div class="cli-block">
+        <div class="cli-top">
+          <div class="cli-cmd"><span class="p">$</span>recall registry publish</div>
+          <div class="cli-desc">sign and publish workspace memory</div>
+        </div>
+        <div class="cli-out">  Name:        fraud-detection-agent
+  Version:     1.0
+  Author:      <span class="hi">pp_8f3a2c4e1d:support-agent</span>
+  Category:    security
+  Workspace:   ws_acme-customer-ops
+  Memories:    847 entries
+
+  Publish? [y/N]: y
+
+  → Signing with passport pp_8f3a2c4e1d...
+  → Writing to Walrus...
+  <span class="hi">✓</span> Published fraud-detection-agent@1.0
+    blob: <span class="hi">0xf1a2b3c4...</span></div>
+      </div>
+
+      <div class="cli-block">
+        <div class="cli-top">
+          <div class="cli-cmd"><span class="p">$</span>recall registry import fraud-detection-agent@1.0</div>
+          <div class="cli-desc">pre-load a workspace with published memory</div>
+        </div>
+        <div class="cli-out">  → Fetching fraud-detection-agent@1.0...
+  → Verifying Walrus blob 0xf1a2b3c4...  <span class="hi">✓</span>
+  → Loading 847 memory entries...
+  <span class="hi">✓</span> Workspace created: ws_fraud-detection-agent
+    memories pre-loaded: 847
+    agent ready</div>
+      </div>
+
+      <div class="cli-block">
+        <div class="cli-top">
+          <div class="cli-cmd"><span class="p">$</span>recall registry list</div>
+          <div class="cli-desc">browse published profiles</div>
+        </div>
+        <div class="cli-out">NAME                      VERSION  AUTHOR                          CATEGORY   MEMORIES
+─────────────────────────────────────────────────────────────────────────────────────
+fraud-detection-agent     1.0      <span class="hi">pp_8f3a2c4e1d:support-agent</span>     security   847
+ecommerce-support-agent   2.1      <span class="hi">pp_4b3e9d8c2a:retail-agent</span>      support    1,204
+defi-risk-agent           0.9      <span class="hi">pp_7a1c5e9f0b:quant-agent</span>       finance    392</div>
+      </div>
+
+    </div>
+
+    <div style="margin-top:32px;">
+      <a href="docs.html#registry" class="cta-link">Read the full Registry docs <span class="arrow">→</span></a>
+    </div>
+  </div>
+</section>
+
 <!-- USE CASES -->
 <section class="reveal">
   <div class="wrap">
