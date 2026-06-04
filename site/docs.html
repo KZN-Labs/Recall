@@ -78,6 +78,13 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
 }
 
+.topnav .logo img {
+  height: 44px;
+  width: auto;
+  display: block;
+  filter: invert(1);
+}
+
 .topnav .links {
   display: flex;
   gap: 24px;
@@ -398,7 +405,10 @@ p strong { color: var(--fg); font-weight: 500; }
 <!-- Top nav -->
 <header class="topnav">
   <div class="topnav-inner">
-    <a href="index.html" class="logo">RECALL</a>
+    <a href="index.html" class="logo">
+      <img src="assets/logo.jpg" alt="RECALL"
+           onerror="this.style.display='none'; this.parentElement.innerText='RECALL';">
+    </a>
     <nav class="links">
       <a href="index.html">Home</a>
       <a href="article.html">Article</a>
