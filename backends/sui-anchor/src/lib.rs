@@ -265,16 +265,20 @@ fn parse_bech32_key(key_str: &str) -> Result<ed25519_dalek::SigningKey> {
 }
 
 fn sui_address_from_ed25519(pub_key: &[u8]) -> String {
-    // RECALL_SUI_SENDER_ADDRESS overrides derived address.
-    // Real Sui uses Blake2b-256; we approximate with SHA-256 since blake2 is
-    // not in workspace deps. The funded address must match this derivation.
+    // Env var override takes priority — always use this for funded wallets
     if let Ok(addr) = env::var("RECALL_SUI_SENDER_ADDRESS") {
         if !addr.is_empty() {
             return addr;
         }
     }
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
+
+    // Correct Sui address derivation:
+    //   Blake2b-256( scheme_flag || public_key_bytes )
+    // scheme_flag = 0x00 for Ed25519
+    use blake2::digest::consts::U32;
+    use blake2::{Blake2b, Digest};
+
+    let mut hasher = Blake2b::<U32>::new();
     hasher.update([0x00u8]); // Ed25519 scheme flag
     hasher.update(pub_key);
     format!("0x{}", hex::encode(hasher.finalize()))

@@ -111,6 +111,21 @@ python demo_seed.py
 
 ---
 
+## Pre-submission check
+
+Run the smoke test to verify everything works end to end:
+
+```bash
+cp .env.example .env
+# fill in your env vars
+source .env
+./scripts/smoke_test.sh
+```
+
+The script checks: build → control plane up → demo seed → conflict detection → receipt trail → Walrus blob IDs → registry. Pass = ready to submit.
+
+---
+
 ## MemWal (Walrus Memory)
 
 RECALL uses [MemWal](https://memory.walrus.xyz/) — the official Walrus Memory SDK —
