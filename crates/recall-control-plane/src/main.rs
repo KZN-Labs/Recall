@@ -83,17 +83,50 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    // ── MemWal credentials required ──────────────────────────────────────────
+    // RECALL is built on Walrus Memory. Every memory write MUST become a
+    // permanent Walrus blob. Without these credentials the system would silently
+    // degrade to in-process storage, which is wrong for the Walrus track.
+    let memwal_key     = std::env::var("MEMWAL_PRIVATE_KEY").unwrap_or_default();
+    let memwal_account = std::env::var("MEMWAL_ACCOUNT_ID").unwrap_or_default();
+
+    if memwal_key.is_empty() || memwal_account.is_empty() {
+        eprintln!();
+        eprintln!("  ERROR: MemWal credentials not configured.");
+        eprintln!();
+        eprintln!("  RECALL requires Walrus Memory to store agent memory blobs.");
+        eprintln!("  Every memory write must be a permanent Walrus blob.");
+        eprintln!();
+        eprintln!("  Set these env vars before starting:");
+        eprintln!("    export MEMWAL_PRIVATE_KEY=\"your-ed25519-private-key\"");
+        eprintln!("    export MEMWAL_ACCOUNT_ID=\"your-memwal-account-id\"");
+        eprintln!();
+        eprintln!("  Get credentials at: https://memory.walrus.xyz/");
+        eprintln!();
+        std::process::exit(1);
+    }
+
     // Resolve Walrus endpoints
     let walrus_publisher = if args.walrus_testnet && args.walrus_publisher.is_none() {
         Some(walrus_memory::WALRUS_TESTNET_PUBLISHER.to_string())
     } else {
-        args.walrus_publisher
+        args.walrus_publisher.clone()
     };
     let walrus_aggregator = if args.walrus_testnet && args.walrus_aggregator.is_none() {
         Some(walrus_memory::WALRUS_TESTNET_AGGREGATOR.to_string())
     } else {
         args.walrus_aggregator
     };
+
+    // Warn (don't exit) if no Walrus publisher endpoint is configured at all.
+    let walrus_configured = args.walrus_testnet
+        || args.walrus_publisher.is_some()
+        || std::env::var("WALRUS_PUBLISHER_URL").is_ok();
+    if !walrus_configured {
+        eprintln!("WARNING: --walrus-testnet not set and WALRUS_PUBLISHER_URL not set.");
+        eprintln!("  Memory writes will not be stored on Walrus.");
+        eprintln!("  Run with: cargo run -p recall-control-plane -- --walrus-testnet");
+    }
 
     if let Some(ref pub_url) = walrus_publisher {
         info!("Walrus: ENABLED  publisher={pub_url}");

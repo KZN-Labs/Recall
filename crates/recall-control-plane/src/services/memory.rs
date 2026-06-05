@@ -135,28 +135,40 @@ impl MemoryService for MemoryServiceImpl {
             let _ = self.state.receipt_store.append(pass_receipt);
         }
 
-        // ── Store the memory entry ────────────────────────────────────────────
+        // ── Walrus write — required, must succeed before we persist anything ──
+        // Every memory write MUST land on Walrus. If Walrus is misconfigured or
+        // unreachable, the write is rejected — we never silently degrade to
+        // in-process-only storage.
+        let walrus_blob_id: String = match self.state.walrus.as_ref() {
+            Some(walrus) => match walrus.write_memory_entry(&entry).await {
+                Ok(blob) => {
+                    info!("Walrus blob stored: {}", blob.0);
+                    blob.0
+                }
+                Err(e) => {
+                    warn!("Walrus write failed: {e}");
+                    return Err(Status::unavailable(format!(
+                        "Walrus write failed: {e} — memory not stored on chain"
+                    )));
+                }
+            },
+            None => {
+                return Err(Status::failed_precondition(
+                    "Walrus backend not configured — set MEMWAL_PRIVATE_KEY and MEMWAL_ACCOUNT_ID",
+                ));
+            }
+        };
+
+        // ── Store the memory entry with the Walrus blob ref attached ─────────
         let memory_id = entry.id.clone();
+        let mut entry = entry;
+        entry.walrus_blob = Some(common_proto::WalrusBlobRef {
+            blob_id: walrus_blob_id.clone(),
+        });
         self.state.memory_store.insert(entry.clone());
 
         // Auto-register workspace so HTTP list reflects gRPC writes too.
         self.state.workspace_store.ensure_exists(&workspace_id.0);
-
-        // ── Walrus blob storage (if configured) ───────────────────────────────
-        let walrus_blob_id = if let Some(walrus) = &self.state.walrus {
-            match walrus.write_memory_entry(&entry).await {
-                Ok(blob) => {
-                    info!("Walrus blob stored: {}", blob.0);
-                    Some(blob.0)
-                }
-                Err(e) => {
-                    warn!("Walrus write failed (continuing): {e}");
-                    None
-                }
-            }
-        } else {
-            None
-        };
 
         // Detect conflicts against existing entries for the same entity.
         let existing = self
@@ -207,7 +219,7 @@ impl MemoryService for MemoryServiceImpl {
         Ok(Response::new(WriteMemoryResponse {
             memory_id,
             receipt_id: Some(common_proto::Hash { hex: receipt_id }),
-            walrus_blob: walrus_blob_id.map(|id| common_proto::WalrusBlobRef { blob_id: id }),
+            walrus_blob: Some(common_proto::WalrusBlobRef { blob_id: walrus_blob_id }),
         }))
     }
 

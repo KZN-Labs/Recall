@@ -388,20 +388,38 @@ async fn write_memory(
         ..Default::default()
     };
 
-    // ── Walrus write (if configured) ──────────────────────────────────────────
-    let walrus_blob_id: Option<String> = if let Some(walrus) = &state.walrus {
-        match walrus.write_memory_entry(&entry).await {
+    // ── Walrus write — required ───────────────────────────────────────────────
+    // Every memory write MUST land on Walrus. If Walrus is misconfigured or
+    // unreachable, the write is rejected — we never silently degrade to
+    // in-process-only storage.
+    let walrus_blob_id: Option<String> = match state.walrus.as_ref() {
+        Some(walrus) => match walrus.write_memory_entry(&entry).await {
             Ok(blob) => {
                 tracing::info!("Walrus blob stored: {}", blob.0);
                 Some(blob.0)
             }
             Err(e) => {
-                tracing::warn!("Walrus write failed (continuing without blob): {e}");
-                None
+                tracing::error!("Walrus write failed: {e}");
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(serde_json::json!({
+                        "error":  "Walrus write failed — memory not stored",
+                        "detail": e.to_string(),
+                        "hint":   "Check Walrus testnet connectivity and MEMWAL credentials",
+                    })),
+                ).into_response();
             }
+        },
+        None => {
+            tracing::error!("Walrus backend not configured at write time");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "Walrus backend not configured",
+                    "hint":  "Start with --walrus-testnet and set MEMWAL_PRIVATE_KEY + MEMWAL_ACCOUNT_ID",
+                })),
+            ).into_response();
         }
-    } else {
-        None
     };
 
     // Attach blob ref to entry before storing locally
@@ -453,7 +471,7 @@ async fn write_memory(
     if let Some(bid) = walrus_blob_id {
         resp["walrus_blob_id"] = serde_json::Value::String(bid);
     }
-    (StatusCode::CREATED, Json(resp))
+    (StatusCode::CREATED, Json(resp)).into_response()
 }
 
 async fn get_conflicts(

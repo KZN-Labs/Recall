@@ -128,26 +128,22 @@ The script checks: build → control plane up → demo seed → conflict detecti
 
 ## MemWal (Walrus Memory)
 
-RECALL uses [MemWal](https://memory.walrus.xyz/) — the official Walrus Memory SDK —
-as the persistent storage layer for agent memory entries.
-
-Every memory write is stored as a permanent, verifiable blob via MemWal.
-Every read query uses MemWal's semantic search to surface relevant context.
-
-To enable MemWal in your RECALL deployment:
-
-1. Create an account at https://memory.walrus.xyz/
-2. Generate a delegate key for your agent
-3. Set environment variables:
+RECALL uses MemWal — the official Walrus Memory SDK — as the persistent
+storage layer. Every memory write is a permanent, verifiable blob on Walrus.
+MemWal credentials are required — the control plane will not start without them.
 
 ```bash
 export MEMWAL_PRIVATE_KEY="your-ed25519-private-key"
 export MEMWAL_ACCOUNT_ID="your-memwal-account-id"
 ```
 
-RECALL works without these — memory is still stored and governed by the control plane —
-but with them, every write becomes a permanent Walrus blob with a verifiable ID,
-and reads gain semantic search over the full memory history.
+Get credentials at: [https://memory.walrus.xyz/](https://memory.walrus.xyz/)
+
+Every write:
+1. Governed by Move contracts on Sui
+2. Stored as a permanent blob on Walrus via MemWal
+3. Returns a blob ID you can verify independently:
+   `curl https://aggregator.walrus-testnet.walrus.space/v1/{blob_id}`
 
 ---
 

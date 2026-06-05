@@ -30,11 +30,10 @@ else
     pass "RECALL_SUI_SENDER_ADDRESS set: $RECALL_SUI_SENDER_ADDRESS"
 fi
 
-if [ -z "${MEMWAL_PRIVATE_KEY:-}" ]; then
-    warn "MEMWAL_PRIVATE_KEY not set — MemWal blobs disabled"
-else
-    pass "MEMWAL_PRIVATE_KEY set"
+if [ -z "${MEMWAL_PRIVATE_KEY:-}" ] || [ -z "${MEMWAL_ACCOUNT_ID:-}" ]; then
+    fail "MEMWAL_PRIVATE_KEY or MEMWAL_ACCOUNT_ID not set — required for Walrus storage"
 fi
+pass "MEMWAL_PRIVATE_KEY + MEMWAL_ACCOUNT_ID set"
 
 echo ""
 
@@ -94,14 +93,26 @@ else
 fi
 echo ""
 
-# ── 7. Check for real Walrus blob ID ──────────────────────────────────────────
-echo "Checking Walrus blob IDs..."
+# ── 7. Check for real Walrus blob ID and verify it is fetchable ──────────────
+echo "Verifying real Walrus blobs..."
 
 LOGS=$(./target/release/recall logs 2>&1)
-if echo "$LOGS" | grep -qE "[a-zA-Z0-9_-]{40,}"; then
-    pass "Walrus blob IDs present in logs"
+
+# Extract a blob ID — Walrus blob IDs are base64url-encoded ~44+ chars
+BLOB_ID=$(echo "$LOGS" | grep -oE '[a-zA-Z0-9_-]{40,}' | head -1)
+
+if [ -z "$BLOB_ID" ]; then
+    fail "No Walrus blob ID found in logs — Walrus writes are not happening"
+fi
+pass "Walrus blob ID found in logs: $BLOB_ID"
+
+HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    "https://aggregator.walrus-testnet.walrus.space/v1/$BLOB_ID")
+
+if [ "$HTTP_STATUS" = "200" ]; then
+    pass "Walrus blob verified: $BLOB_ID (HTTP 200 from testnet aggregator)"
 else
-    warn "No Walrus blob IDs found — check WALRUS_PUBLISHER_URL or --walrus-testnet flag"
+    fail "Walrus blob NOT found on testnet (HTTP $HTTP_STATUS for $BLOB_ID)"
 fi
 echo ""
 
@@ -122,11 +133,7 @@ else
     warn "Sui anchoring: SYNTHETIC (set env vars for real anchoring)"
 fi
 
-if [ -n "${MEMWAL_PRIVATE_KEY:-}" ]; then
-    pass "MemWal: ENABLED"
-else
-    warn "MemWal: DISABLED (set MEMWAL_PRIVATE_KEY + MEMWAL_ACCOUNT_ID)"
-fi
+pass "MemWal: ENABLED (required — checked at start)"
 
 echo ""
 echo "Smoke test complete."
