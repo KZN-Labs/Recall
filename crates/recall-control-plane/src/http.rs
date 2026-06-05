@@ -681,23 +681,62 @@ async fn publish_registry(
         0
     };
 
-    // ── 7. Deterministic placeholder blob ID derived from content ────────────
-    let walrus_blob_id = format!(
-        "0x{}",
-        sha256_short(&format!("{}@{}:{}", body.name, body.version, body.passport_id))
-    );
-
-    let profile = reg_proto::RegistryProfile {
-        name:        body.name.clone(),
-        version:     body.version.clone(),
-        author:      author.clone(),
-        category:    body.category.clone(),
-        description: body.description.clone(),
+    // ── 7. Build canonical profile proto and write it to Walrus ───────────────
+    let published_at = chrono::Utc::now();
+    let profile_proto_for_blob = reg_proto::RegistryProfile {
+        name:                   body.name.clone(),
+        version:                body.version.clone(),
+        author:                 author.clone(),
+        category:               body.category.clone(),
+        description:            body.description.clone(),
         memory_count,
-        publisher_passport_id: body.passport_id.clone(),
-        walrus_blob: Some(common_proto::WalrusBlobRef { blob_id: walrus_blob_id.clone() }),
-        immutable:   true,
+        artifact_count:         0,
+        import_count:           0,
+        published_at: Some(prost_types::Timestamp {
+            seconds: published_at.timestamp(),
+            nanos:   0,
+        }),
+        immutable:              true,
+        publisher_passport_id:  body.passport_id.clone(),
         ..Default::default()
+    };
+
+    let mut profile_bytes = Vec::new();
+    if let Err(e) = prost::Message::encode(&profile_proto_for_blob, &mut profile_bytes) {
+        tracing::warn!("registry profile encode failed: {e}");
+    }
+
+    let walrus_blob_id: String = if let Some(walrus) = &state.walrus {
+        match walrus.put_blob_raw(&profile_bytes).await {
+            Ok(blob) => {
+                tracing::info!(
+                    "Registry profile {}@{} stored on Walrus: {}",
+                    body.name, body.version, blob.0
+                );
+                blob.0
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Walrus write failed for registry profile ({e}); using deterministic ID"
+                );
+                format!(
+                    "0x{}",
+                    sha256_short(&format!("{}@{}:{}", body.name, body.version, body.passport_id))
+                )
+            }
+        }
+    } else {
+        format!(
+            "0x{}",
+            sha256_short(&format!("{}@{}:{}", body.name, body.version, body.passport_id))
+        )
+    };
+
+    // Profile stored in the registry carries the real Walrus blob ID so
+    // `recall registry inspect` returns it.
+    let profile = reg_proto::RegistryProfile {
+        walrus_blob: Some(common_proto::WalrusBlobRef { blob_id: walrus_blob_id.clone() }),
+        ..profile_proto_for_blob
     };
 
     match state.registry_store.publish(profile.clone()) {
@@ -710,9 +749,14 @@ async fn publish_registry(
             "memory_count":          memory_count,
             "walrus_blob_id":        walrus_blob_id,
             "publisher_passport_id": body.passport_id,
-            "published_at":          chrono::Utc::now().to_rfc3339(),
+            "published_at":          published_at.to_rfc3339(),
             "immutable":             true,
             "ok":                    true,
+            "walrus_url":            format!(
+                "{}/v1/{}",
+                walrus_memory::WALRUS_TESTNET_AGGREGATOR,
+                walrus_blob_id
+            ),
         }))).into_response(),
         Err(e) => (StatusCode::CONFLICT, Json(serde_json::json!({
             "error": e.to_string()

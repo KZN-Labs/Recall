@@ -49,6 +49,17 @@ impl WalrusMemoryBackend {
         Ok(mem_proto::MemoryEntry::decode(bytes.as_slice())?)
     }
 
+    /// Write arbitrary bytes to Walrus. Returns the permanent blob ID.
+    /// Used for registry profiles, handoff capsules, and other non-memory blobs.
+    pub async fn put_blob_raw(&self, data: &[u8]) -> Result<WalrusBlobId> {
+        self.put_blob(data).await
+    }
+
+    /// Read raw bytes from Walrus by blob ID.
+    pub async fn get_blob_raw(&self, blob_id: &WalrusBlobId) -> Result<Vec<u8>> {
+        self.get_blob(&blob_id.0).await
+    }
+
     // ── HTTP primitives ───────────────────────────────────────────────────────
 
     async fn put_blob(&self, data: &[u8]) -> Result<WalrusBlobId> {
