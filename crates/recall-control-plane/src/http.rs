@@ -116,6 +116,11 @@ pub struct MemoryEntryJson {
     pub model_provider: String,
     pub model_name: String,
     pub timestamp_secs: Option<i64>,
+    /// Walrus blob ID where this entry is permanently stored (None if Walrus
+    /// was disabled at write time, which never happens in normal operation
+    /// because the control plane refuses to start without MemWal credentials).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub walrus_blob_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -214,13 +219,18 @@ fn entry_to_json(e: &memory_proto::MemoryEntry) -> MemoryEntryJson {
         model_provider: e.model_provider.clone(),
         model_name: e.model_name.clone(),
         timestamp_secs: e.timestamp.as_ref().map(|t| t.seconds),
+        walrus_blob_id: e.walrus_blob.as_ref().map(|w| w.blob_id.clone()),
     }
 }
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 
-async fn health() -> Json<serde_json::Value> {
-    Json(serde_json::json!({ "status": "ok", "service": "recall-control-plane" }))
+async fn health(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "status":          "ok",
+        "service":         "recall-control-plane",
+        "walrus_enabled":  state.walrus.is_some(),
+    }))
 }
 
 async fn list_receipts(

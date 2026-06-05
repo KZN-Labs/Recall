@@ -10,15 +10,29 @@ Usage:
 import asyncio
 import sys
 import argparse
-import os
+
+import httpx
 
 sys.path.insert(0, "sdks/python/src")
 
 from recall.client import RecallClient
 
-MEMWAL_CONFIGURED = bool(
-    os.environ.get("MEMWAL_PRIVATE_KEY") and os.environ.get("MEMWAL_ACCOUNT_ID")
-)
+
+async def control_plane_walrus_enabled(endpoint: str) -> bool:
+    """
+    Ask the control plane directly whether it has a Walrus backend wired up.
+    This is the truthful answer — checking *this* process's env vars only
+    tells you what this script has, not whether the writes actually landed
+    on Walrus (which is the control plane's responsibility).
+    """
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.get(f"{endpoint}/health")
+            if resp.status_code == 200:
+                return bool(resp.json().get("walrus_enabled", False))
+    except Exception:
+        pass
+    return False
 
 async def seed(endpoint: str) -> None:
     recall = RecallClient(http_endpoint=endpoint)
@@ -105,12 +119,13 @@ async def seed(endpoint: str) -> None:
     print("  Expected conflict: credit_offered ↔ flag_suspicious for sarah@email.com")
     print("  Receipts issued for every write — visible in Inspector stats bar.")
     print()
-    if MEMWAL_CONFIGURED:
-        print("  MemWal (Walrus Memory): ENABLED — memory entries stored as permanent blobs")
-        print("  Blobs are verifiable at: https://aggregator.walrus-testnet.walrus.space")
+    walrus_on = await control_plane_walrus_enabled(endpoint)
+    if walrus_on:
+        print("  Walrus: ENABLED on the control plane — every write is a permanent blob")
+        print("  Blobs are verifiable at: https://aggregator.walrus-testnet.walrus.space/v1/blobs/<id>")
     else:
-        print("  MemWal (Walrus Memory): set MEMWAL_PRIVATE_KEY + MEMWAL_ACCOUNT_ID to enable")
-        print("  Sign up at: https://memory.walrus.xyz/")
+        print("  Walrus: DISABLED on the control plane")
+        print("  Restart the server with: --walrus-testnet  (or set WALRUS_PUBLISHER_URL)")
 
 
 if __name__ == "__main__":
