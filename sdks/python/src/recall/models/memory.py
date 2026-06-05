@@ -16,22 +16,33 @@ class CostAnnotation(BaseModel):
 
 class MemoryEntry(BaseModel):
     id: str
-    receipt_id: Optional[str] = None
     workspace_id: str
     entity: str
-    agent_id: str
-    passport_id: Optional[str] = None
-    model_provider: str = ""
-    model_name: str = ""
-    trust_level: int = 1
+
+    # Payload
     event: str
     data: dict[str, Any] = Field(default_factory=dict)
     tags: list[str] = Field(default_factory=list)
     scope: str = "internal"
-    timestamp: Optional[datetime] = None
+
+    # Actor
+    agent_id: str
+    passport_id: Optional[str] = None
+    trust_level: int = 1
+    model_provider: str = ""
+    model_name: str = ""
+
+    # Cryptographic links — populated by the control plane
+    receipt_id: Optional[str] = None
     walrus_blob_id: Optional[str] = None
+    walrus_url: Optional[str] = None
+    conflict_ids: list[str] = Field(default_factory=list)
     seal_status: str = "UNSEALED"
     cost_annotation: Optional[CostAnnotation] = None
+
+    # Timestamps — both formats provided by the server
+    timestamp: Optional[datetime] = None
+    timestamp_secs: Optional[int] = None
 
 
 class ConflictSignal(BaseModel):

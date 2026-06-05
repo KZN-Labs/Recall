@@ -159,12 +159,34 @@ impl MemoryService for MemoryServiceImpl {
             }
         };
 
-        // ── Store the memory entry with the Walrus blob ref attached ─────────
+        // ── Build the memory.write receipt first so we can attach its ID to
+        //    the entry before storing (gives the gRPC entry a direct receipt_id
+        //    link, matching the HTTP path) ──────────────────────────────────────
+        let receipt = ReceiptBuilder::new(
+            action_kind::MEMORY_WRITE,
+            &workspace_id,
+            &actor_passport_id,
+            &actor_agent_id,
+        )
+        .with_cost_annotation(
+            entry.model_provider.as_str(),
+            entry.model_name.as_str(),
+            entry.cost_annotation.as_ref().map(|c| c.tokens_in).unwrap_or(0),
+            entry.cost_annotation.as_ref().map(|c| c.tokens_out).unwrap_or(0),
+            entry.cost_annotation.as_ref().map(|c| c.usd_cents).unwrap_or(0),
+        )
+        .build(&self.state.cp_keypair);
+        let receipt_id_hex = receipt.id.as_ref().map(|h| h.hex.clone()).unwrap_or_default();
+
+        // ── Store the memory entry with the Walrus blob ref and receipt id ──
         let memory_id = entry.id.clone();
         let mut entry = entry;
         entry.walrus_blob = Some(common_proto::WalrusBlobRef {
             blob_id: walrus_blob_id.clone(),
         });
+        if !receipt_id_hex.is_empty() {
+            entry.receipt_id = Some(common_proto::Hash { hex: receipt_id_hex });
+        }
         self.state.memory_store.insert(entry.clone());
 
         // Auto-register workspace so HTTP list reflects gRPC writes too.
@@ -191,22 +213,6 @@ impl MemoryService for MemoryServiceImpl {
                 self.state.conflict_store.insert(conflict);
             }
         }
-
-        // ── Emit memory.write receipt ─────────────────────────────────────────
-        let receipt = ReceiptBuilder::new(
-            action_kind::MEMORY_WRITE,
-            &workspace_id,
-            &actor_passport_id,
-            &actor_agent_id,
-        )
-        .with_cost_annotation(
-            entry.model_provider.as_str(),
-            entry.model_name.as_str(),
-            entry.cost_annotation.as_ref().map(|c| c.tokens_in).unwrap_or(0),
-            entry.cost_annotation.as_ref().map(|c| c.tokens_out).unwrap_or(0),
-            entry.cost_annotation.as_ref().map(|c| c.usd_cents).unwrap_or(0),
-        )
-        .build(&self.state.cp_keypair);
 
         let receipt_id = receipt
             .id

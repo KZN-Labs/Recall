@@ -22,24 +22,42 @@ export interface Signature {
 }
 
 export interface MemoryEntry {
+  // Identity
   id: string
-  receiptId?: Hash
   workspaceId: WorkspaceId
   entity: string
-  agentId: AgentId
-  passportId?: Hash
-  modelProvider: string
-  modelName: string
-  trustLevel: number
+
+  // Payload
   event: string
   data: Record<string, unknown>
   tags: string[]
   scope: string
-  timestamp?: string
+
+  // Actor
+  agentId: AgentId
+  passportId?: Hash
+  trustLevel: number
+  modelProvider: string
+  modelName: string
+
+  // Cryptographic links (set by the control plane on write)
+  receiptId?: Hash
   walrusBlob?: WalrusBlobRef
+  /** Plain string form of the Walrus blob ID — convenience mirror of walrusBlob.blobId */
+  walrusBlobId?: string
+  /** Ready-to-fetch aggregator URL for the blob */
+  walrusUrl?: string
+  /** IDs of any conflict records this entry participates in */
+  conflictIds?: string[]
   sealStatus: 'UNSEALED' | 'SEALED'
   costAnnotation?: CostAnnotation
   causalPredecessors: CausalRef[]
+
+  // Timestamps (both formats provided by the server)
+  /** ISO 8601 string, e.g. "2026-06-05T23:11:48Z" */
+  timestamp?: string
+  /** Unix epoch seconds */
+  timestampSecs?: number
 }
 
 export interface ConflictSignal {

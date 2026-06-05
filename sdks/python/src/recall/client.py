@@ -114,7 +114,12 @@ class Workspace:
                     data=item.get("data", {}),
                     tags=item.get("tags", []),
                     scope=item.get("scope", "internal"),
+                    receipt_id=item.get("receipt_id"),
+                    walrus_blob_id=item.get("walrus_blob_id"),
+                    walrus_url=item.get("walrus_url"),
+                    conflict_ids=item.get("conflict_ids", []),
                     timestamp=ts,
+                    timestamp_secs=ts_secs,
                 )
             )
 

@@ -103,24 +103,42 @@ pub struct ReceiptJson {
 
 #[derive(Serialize)]
 pub struct MemoryEntryJson {
+    // ── Identity ──
     pub id: String,
     pub workspace_id: String,
     pub entity: String,
-    pub agent_id: String,
-    pub passport_id: String,
+
+    // ── Payload ──
     pub event: String,
     pub data: serde_json::Value,
     pub tags: Vec<String>,
     pub scope: String,
+
+    // ── Actor ──
+    pub agent_id: String,
+    pub passport_id: String,
     pub trust_level: i32,
     pub model_provider: String,
     pub model_name: String,
-    pub timestamp_secs: Option<i64>,
-    /// Walrus blob ID where this entry is permanently stored (None if Walrus
-    /// was disabled at write time, which never happens in normal operation
-    /// because the control plane refuses to start without MemWal credentials).
+
+    // ── Cryptographic links ──
+    /// SHA-256 of the canonical receipt for this write — the audit-trail handle.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt_id: Option<String>,
+    /// Walrus blob ID — the permanent data handle.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub walrus_blob_id: Option<String>,
+    /// Ready-to-fetch aggregator URL for the blob.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub walrus_url: Option<String>,
+    /// IDs of any conflict records this entry participates in.
+    pub conflict_ids: Vec<String>,
+
+    // ── Timestamps — both formats so humans and machines are both happy ──
+    /// ISO 8601 timestamp, e.g. "2026-06-05T23:11:48Z".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<String>,
+    pub timestamp_secs: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -201,25 +219,60 @@ fn receipt_to_json(r: &recall_proto::receipt::Receipt) -> ReceiptJson {
     }
 }
 
-fn entry_to_json(e: &memory_proto::MemoryEntry) -> MemoryEntryJson {
+fn entry_to_json(e: &memory_proto::MemoryEntry, state: &AppState) -> MemoryEntryJson {
     let data = e.data.as_ref()
         .map(prost_struct_to_json)
         .unwrap_or(serde_json::Value::Object(Default::default()));
+
+    let workspace_id = e.workspace_id.as_ref().map(|w| w.value.clone()).unwrap_or_default();
+    let walrus_blob_id = e.walrus_blob.as_ref().map(|w| w.blob_id.clone());
+    let walrus_url = walrus_blob_id.as_ref().map(|id| format!(
+        "https://aggregator.walrus-testnet.walrus.space/v1/blobs/{}",
+        id
+    ));
+
+    // Find any conflict records that reference this memory entry.
+    // Conflicts are stored per-workspace; we filter by signal_a/signal_b memory_id.
+    let conflict_ids: Vec<String> = state
+        .conflict_store
+        .list_pending(&workspace_id)
+        .into_iter()
+        .filter(|c| {
+            c.signal_a.as_ref().map(|s| s.memory_id == e.id).unwrap_or(false)
+                || c.signal_b.as_ref().map(|s| s.memory_id == e.id).unwrap_or(false)
+        })
+        .map(|c| c.id)
+        .collect();
+
+    let timestamp_secs = e.timestamp.as_ref().map(|t| t.seconds);
+    let timestamp = timestamp_secs.and_then(|secs| {
+        chrono::DateTime::<chrono::Utc>::from_timestamp(secs, 0)
+            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+    });
+
     MemoryEntryJson {
         id: e.id.clone(),
-        workspace_id: e.workspace_id.as_ref().map(|w| w.value.clone()).unwrap_or_default(),
+        workspace_id,
         entity: e.entity.clone(),
-        agent_id: e.agent_id.as_ref().map(|a| a.value.clone()).unwrap_or_default(),
-        passport_id: e.passport_id.as_ref().map(|h| h.hex.clone()).unwrap_or_default(),
+
         event: e.event.clone(),
         data,
         tags: e.tags.clone(),
         scope: e.scope.clone(),
+
+        agent_id: e.agent_id.as_ref().map(|a| a.value.clone()).unwrap_or_default(),
+        passport_id: e.passport_id.as_ref().map(|h| h.hex.clone()).unwrap_or_default(),
         trust_level: e.trust_level,
         model_provider: e.model_provider.clone(),
         model_name: e.model_name.clone(),
-        timestamp_secs: e.timestamp.as_ref().map(|t| t.seconds),
-        walrus_blob_id: e.walrus_blob.as_ref().map(|w| w.blob_id.clone()),
+
+        receipt_id: e.receipt_id.as_ref().map(|h| h.hex.clone()),
+        walrus_blob_id,
+        walrus_url,
+        conflict_ids,
+
+        timestamp,
+        timestamp_secs,
     }
 }
 
@@ -308,7 +361,7 @@ async fn list_workspace_memory(
     Path(workspace_id): Path<String>,
 ) -> Json<Vec<MemoryEntryJson>> {
     let entries = state.memory_store.list_by_workspace(&workspace_id);
-    Json(entries.iter().map(entry_to_json).collect())
+    Json(entries.iter().map(|e| entry_to_json(e, &state)).collect())
 }
 
 async fn workspace_stats(
@@ -348,7 +401,7 @@ async fn read_memory(
         .build(&state.cp_keypair);
     let _ = state.receipt_store.append(receipt);
 
-    Json(entries.iter().map(entry_to_json).collect())
+    Json(entries.iter().map(|e| entry_to_json(e, &state)).collect())
 }
 
 async fn write_memory(
@@ -432,12 +485,26 @@ async fn write_memory(
         }
     };
 
-    // Attach blob ref to entry before storing locally
+    // Build the memory.write receipt first so we can attach its ID to the entry
+    // before storing — this gives every entry a direct receipt_id link in the
+    // /memory JSON, no cross-API joins needed.
+    let ws       = WorkspaceId(workspace_id.clone());
+    let passport = ContentHash(body.passport_id.clone());
+    let agent    = AgentId(body.agent_id.clone());
+    let receipt  = ReceiptBuilder::new(action_kind::MEMORY_WRITE, &ws, &passport, &agent)
+        .with_cost_annotation(&body.model_provider, &body.model_name, 0, 0, 0)
+        .build(&state.cp_keypair);
+    let receipt_id = receipt.id.as_ref().map(|h| h.hex.clone()).unwrap_or_default();
+
+    // Attach blob ref + receipt id to the entry before storing.
     let mut entry = entry;
     if let Some(ref bid) = walrus_blob_id {
         entry.walrus_blob = Some(common_proto::WalrusBlobRef {
             blob_id: bid.clone(),
         });
+    }
+    if !receipt_id.is_empty() {
+        entry.receipt_id = Some(common_proto::Hash { hex: receipt_id.clone() });
     }
 
     state.memory_store.insert(entry.clone());
@@ -461,14 +528,7 @@ async fn write_memory(
         }
     }
 
-    // Emit memory.write receipt.
-    let ws       = WorkspaceId(workspace_id.clone());
-    let passport = ContentHash(body.passport_id.clone());
-    let agent    = AgentId(body.agent_id.clone());
-    let receipt  = ReceiptBuilder::new(action_kind::MEMORY_WRITE, &ws, &passport, &agent)
-        .with_cost_annotation(&body.model_provider, &body.model_name, 0, 0, 0)
-        .build(&state.cp_keypair);
-    let receipt_id = receipt.id.as_ref().map(|h| h.hex.clone()).unwrap_or_default();
+    // Append the pre-built receipt to the receipt store.
     let _ = state.receipt_store.append(receipt.clone());
 
     // Broadcast to streaming subscribers.
@@ -566,7 +626,7 @@ async fn get_entity_all_workspaces(
     Path(entity_id): Path<String>,
 ) -> Json<Vec<MemoryEntryJson>> {
     let entries = state.memory_store.get_by_entity_all(&entity_id);
-    Json(entries.iter().map(entry_to_json).collect())
+    Json(entries.iter().map(|e| entry_to_json(e, &state)).collect())
 }
 
 #[derive(Deserialize)]
@@ -808,7 +868,7 @@ async fn handoff(
 ) -> impl IntoResponse {
     // Snapshot all memory entries for this entity.
     let entries = state.memory_store.get_by_entity_all(&body.entity);
-    let snapshot: Vec<MemoryEntryJson> = entries.iter().map(entry_to_json).collect();
+    let snapshot: Vec<MemoryEntryJson> = entries.iter().map(|e| entry_to_json(e, &state)).collect();
 
     // Emit handoff.capsule.create receipt.
     let cp_agent   = AgentId("00000000-0000-0000-0000-000000000001".to_string());
