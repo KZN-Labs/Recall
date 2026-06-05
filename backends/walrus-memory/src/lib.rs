@@ -91,7 +91,7 @@ impl WalrusMemoryBackend {
 
     async fn get_blob(&self, blob_id: &str) -> Result<Vec<u8>> {
         let resp = self.client
-            .get(format!("{}/v1/{}", self.aggregator_url, blob_id))
+            .get(format!("{}/v1/blobs/{}", self.aggregator_url, blob_id))
             .send()
             .await
             .map_err(|e| anyhow!("Walrus GET failed: {e}"))?;

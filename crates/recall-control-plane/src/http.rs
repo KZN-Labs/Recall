@@ -771,7 +771,7 @@ async fn publish_registry(
             "immutable":             true,
             "ok":                    true,
             "walrus_url":            format!(
-                "{}/v1/{}",
+                "{}/v1/blobs/{}",
                 walrus_memory::WALRUS_TESTNET_AGGREGATOR,
                 walrus_blob_id
             ),

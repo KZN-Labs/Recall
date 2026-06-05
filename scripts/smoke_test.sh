@@ -45,7 +45,7 @@ echo ""
 
 # ── 3. Start control plane in background ─────────────────────────────────────
 echo "Starting control plane..."
-./target/release/recall-control-plane --walrus-testnet &
+./target/release/recall-control-plane --walrus-testnet 2>&1 | tee /tmp/smoke_cp.log &
 CP_PID=$!
 trap "kill $CP_PID 2>/dev/null; exit" INT TERM EXIT
 
@@ -65,7 +65,17 @@ echo ""
 
 # ── 4. Run demo seed ──────────────────────────────────────────────────────────
 echo "Running demo seed..."
-python demo_seed.py 2>&1
+# Prefer the project's .venv if it exists, otherwise system python3.
+if [ -x ".venv/bin/python" ]; then
+    PY=".venv/bin/python"
+elif command -v python3 >/dev/null; then
+    PY="python3"
+elif command -v python >/dev/null; then
+    PY="python"
+else
+    fail "python3 not found — install python3 or activate .venv to run demo_seed.py"
+fi
+"$PY" demo_seed.py 2>&1
 pass "Demo seed complete"
 echo ""
 
@@ -96,21 +106,41 @@ echo ""
 # ── 7. Check for real Walrus blob ID and verify it is fetchable ──────────────
 echo "Verifying real Walrus blobs..."
 
-LOGS=$(./target/release/recall logs 2>&1)
+# Disable strict-fail for the extraction pipelines — grep returning no-match
+# would otherwise tear down the whole script under `set -euo pipefail`.
+set +e
 
-# Extract a blob ID — Walrus blob IDs are base64url-encoded ~44+ chars
-BLOB_ID=$(echo "$LOGS" | grep -oE '[a-zA-Z0-9_-]{40,}' | head -1)
+# Primary source: scan the control plane's own logs for "Walrus blob stored:".
+# This is the most reliable signal because it confirms we actually wrote.
+BLOB_ID=""
+if [ -f /tmp/smoke_cp.log ]; then
+    BLOB_ID=$(grep -oE 'Walrus blob stored: [A-Za-z0-9_-]{40,}' /tmp/smoke_cp.log | head -1 | awk '{print $NF}')
+fi
+
+# Fallback: query the HTTP API and look for any 40+ char base64url-ish token
+# (Walrus blob IDs match that shape).
+if [ -z "$BLOB_ID" ]; then
+    WS_ID=$(curl -s --max-time 5 http://localhost:8080/workspaces 2>/dev/null \
+        | grep -oE '"workspace_id":"[^"]+"' | head -1 | cut -d'"' -f4)
+    if [ -n "$WS_ID" ]; then
+        BLOB_ID=$(curl -s --max-time 5 "http://localhost:8080/memory/$WS_ID" 2>/dev/null \
+            | grep -oE '"blob_id":"[A-Za-z0-9_-]{40,}"' | head -1 \
+            | sed 's/.*"blob_id":"\([^"]*\)".*/\1/')
+    fi
+fi
+
+set -e
 
 if [ -z "$BLOB_ID" ]; then
-    fail "No Walrus blob ID found in logs — Walrus writes are not happening"
+    fail "No Walrus blob ID found via control-plane logs or /memory endpoint"
 fi
-pass "Walrus blob ID found in logs: $BLOB_ID"
+pass "Walrus blob ID: $BLOB_ID"
 
-HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-    "https://aggregator.walrus-testnet.walrus.space/v1/$BLOB_ID")
+HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+    "https://aggregator.walrus-testnet.walrus.space/v1/blobs/$BLOB_ID")
 
 if [ "$HTTP_STATUS" = "200" ]; then
-    pass "Walrus blob verified: $BLOB_ID (HTTP 200 from testnet aggregator)"
+    pass "Walrus blob verified on testnet aggregator (HTTP 200)"
 else
     fail "Walrus blob NOT found on testnet (HTTP $HTTP_STATUS for $BLOB_ID)"
 fi

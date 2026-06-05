@@ -143,7 +143,7 @@ Every write:
 1. Governed by Move contracts on Sui
 2. Stored as a permanent blob on Walrus via MemWal
 3. Returns a blob ID you can verify independently:
-   `curl https://aggregator.walrus-testnet.walrus.space/v1/{blob_id}`
+   `curl https://aggregator.walrus-testnet.walrus.space/v1/blobs/{blob_id}`
 
 ---
 
