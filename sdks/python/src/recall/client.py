@@ -154,19 +154,23 @@ class Workspace:
             body["metadata"] = metadata
 
         receipt_id = ""
+        walrus_blob_id: Optional[str] = None
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(url, json=body)
                 resp.raise_for_status()
                 result = resp.json()
-                receipt_id = result.get("receipt_id", "")
+                receipt_id     = result.get("receipt_id", "")
+                walrus_blob_id = result.get("walrus_blob_id")
         except (httpx.HTTPError, httpx.ConnectError) as exc:
             print(f"[recall] write failed ({exc}) — generating local receipt")
             receipt_id = sha256_hex(
                 f"{self._workspace_id}:{entity}:{event}".encode()
             )
 
-        # ── MemWal (Walrus Memory) permanent blob storage ─────────────────────
+        # ── Optional direct MemWal blob (in addition to the control-plane Walrus
+        #     write). Only fires when MEMWAL_PRIVATE_KEY/ACCOUNT_ID are set in
+        #     this client's environment; otherwise the result is an empty string.
         value_str = value if isinstance(value, str) else json.dumps(value, default=str)
         memwal_text = (
             f"{event}: {value_str} "
@@ -181,6 +185,7 @@ class Workspace:
             actor_passport_id=self._passport_id,
             actor_agent_id=self._agent_id,
             timestamp=datetime.now(tz=timezone.utc),
+            walrus_blob_id=walrus_blob_id,
             memwal_blob_id=memwal_blob_id or None,
         )
 
