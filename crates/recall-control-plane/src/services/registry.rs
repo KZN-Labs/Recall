@@ -48,6 +48,7 @@ impl RegistryService for RegistryServiceImpl {
             immutable: true,
             component_blob_ids: None,
             publisher_passport_id: String::new(),
+            visibility: 0, // PUBLIC
         };
 
         self.state

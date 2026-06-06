@@ -142,6 +142,11 @@ pub struct MemoryEntryJson {
     /// IDs of any conflict records this entry participates in.
     pub conflict_ids: Vec<String>,
 
+    /// If this entry was bulk-imported from a registry profile, the original
+    /// memory ID in the source workspace.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub imported_from: Option<String>,
+
     // ── Timestamps — both formats so humans and machines are both happy ──
     /// ISO 8601 timestamp, e.g. "2026-06-05T23:11:48Z".
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -286,6 +291,7 @@ fn entry_to_json(e: &memory_proto::MemoryEntry, state: &AppState) -> MemoryEntry
         walrus_blob_id,
         walrus_url,
         conflict_ids,
+        imported_from: e.imported_from.as_ref().map(|h| h.hex.clone()),
 
         timestamp,
         timestamp_secs,
@@ -693,6 +699,17 @@ struct PublishRegistryBody {
     passport_id:  String,
     signature:    String,   // hex-encoded Ed25519 signature
     public_key:   String,   // hex-encoded Ed25519 public key matching passport
+    /// Optional. Accepts "public" (default) or "restricted". Anything else
+    /// falls back to "public" since the registry is open by default.
+    #[serde(default)]
+    visibility:   Option<String>,
+}
+
+fn parse_visibility(s: Option<&str>) -> i32 {
+    match s.unwrap_or("public").to_ascii_lowercase().as_str() {
+        "restricted" => 1,
+        _            => 0,
+    }
 }
 
 /// Short 8-byte SHA-256 prefix as hex — used as a deterministic placeholder
@@ -795,6 +812,7 @@ async fn publish_registry(
 
     // ── 7. Build canonical profile proto + entries package, write to Walrus ──
     let published_at = chrono::Utc::now();
+    let visibility = parse_visibility(body.visibility.as_deref());
     let profile_proto_for_blob = reg_proto::RegistryProfile {
         name:                   body.name.clone(),
         version:                body.version.clone(),
@@ -810,6 +828,7 @@ async fn publish_registry(
         }),
         immutable:              true,
         publisher_passport_id:  body.passport_id.clone(),
+        visibility,
         ..Default::default()
     };
 
@@ -859,6 +878,15 @@ async fn publish_registry(
         )
     };
 
+    // Cache the package bytes so import can bypass the publisher→aggregator
+    // propagation lag on Walrus testnet. Important — this is correctness, not
+    // optimization: imports immediately after publish would otherwise 502.
+    state
+        .registry_blob_cache
+        .write()
+        .unwrap()
+        .insert(walrus_blob_id.clone(), package_bytes.clone());
+
     // Profile stored in the registry carries the real Walrus blob ID so
     // `recall registry inspect` returns it.
     let profile = reg_proto::RegistryProfile {
@@ -876,6 +904,7 @@ async fn publish_registry(
             "memory_count":          memory_count,
             "walrus_blob_id":        walrus_blob_id,
             "publisher_passport_id": body.passport_id,
+            "visibility":            if visibility == 1 { "restricted" } else { "public" },
             "published_at":          published_at.to_rfc3339(),
             "immutable":             true,
             "ok":                    true,
@@ -926,27 +955,41 @@ async fn import_registry(
         }
     };
 
-    let walrus = match state.walrus.as_ref() {
-        Some(w) => w,
-        None => {
-            return (StatusCode::FAILED_DEPENDENCY, Json(serde_json::json!({
-                "error": "Walrus backend not configured — cannot fetch profile blob",
-            }))).into_response();
-        }
-    };
+    // Cache hit avoids the Walrus aggregator's publisher→reader propagation
+    // lag and also makes import work without Walrus being configured at all.
+    let cached = state
+        .registry_blob_cache
+        .read()
+        .unwrap()
+        .get(&blob_id)
+        .cloned();
 
-    let blob_bytes = match walrus
-        .get_blob_raw(&recall_core::ids::WalrusBlobId(blob_id.clone()))
-        .await
-    {
-        Ok(b) => b,
-        Err(e) => {
-            tracing::error!("registry import: Walrus fetch failed: {e}");
-            return (StatusCode::BAD_GATEWAY, Json(serde_json::json!({
-                "error":  "failed to fetch profile blob from Walrus",
-                "detail": e.to_string(),
-                "blob_id": blob_id,
-            }))).into_response();
+    let blob_bytes = if let Some(bytes) = cached {
+        tracing::debug!("registry import: cache hit for blob {}", blob_id);
+        bytes
+    } else {
+        let walrus = match state.walrus.as_ref() {
+            Some(w) => w,
+            None => {
+                return (StatusCode::FAILED_DEPENDENCY, Json(serde_json::json!({
+                    "error": "Walrus backend not configured — cannot fetch profile blob",
+                }))).into_response();
+            }
+        };
+        match walrus
+            .get_blob_raw(&recall_core::ids::WalrusBlobId(blob_id.clone()))
+            .await
+        {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::error!("registry import: Walrus fetch failed: {e}");
+                return (StatusCode::BAD_GATEWAY, Json(serde_json::json!({
+                    "error":  "failed to fetch profile blob from Walrus",
+                    "detail": e.to_string(),
+                    "blob_id": blob_id,
+                    "hint":    "Walrus aggregator may not have synced the just-published blob yet; retry in a few seconds",
+                }))).into_response();
+            }
         }
     };
 
@@ -963,40 +1006,124 @@ async fn import_registry(
         }
     };
 
-    // ── 4. Create the target workspace and bulk-insert entries ────────────────
+    // ── 4. Visibility gate ────────────────────────────────────────────────────
+    // RESTRICTED profiles require a passport-grant flow that isn't built yet.
+    // Refuse the import explicitly rather than silently allowing it.
+    if profile.visibility == 1 {
+        return (StatusCode::NOT_IMPLEMENTED, Json(serde_json::json!({
+            "error": "this profile is RESTRICTED; the import grant flow is not yet implemented",
+            "hint":  "publish as PUBLIC, or wait for the registry grant + Seal flow",
+        }))).into_response();
+    }
+
+    // ── 5. Decide target workspace + emit the import receipt FIRST ────────────
+    // The import receipt is the causal root that each per-entry receipt
+    // points back to via `causal_predecessors`. Building it first lets us
+    // capture its ID before the entry loop.
     let target_ws_id = target_ws_override
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| format!("ws_{}", name));
 
     state.workspace_store.ensure_exists(&target_ws_id);
 
-    let mut imported = 0usize;
-    for src_entry in &package.entries {
-        let mut entry = src_entry.clone();
-        // Re-stamp the workspace so the entry lives in the target workspace
-        // even though it was authored in the source. The original entry ID is
-        // preserved so receipts that referenced it still resolve.
-        entry.workspace_id = Some(common_proto::WorkspaceId {
-            value: target_ws_id.clone(),
-        });
-        state.memory_store.insert(entry);
-        imported += 1;
-    }
-
-    // ── 5. Emit a registry.import receipt ─────────────────────────────────────
     let cp_agent    = AgentId("00000000-0000-0000-0000-000000000001".to_string());
     let cp_passport = ContentHash("cp_passport".to_string());
     let ws          = WorkspaceId(target_ws_id.clone());
 
-    let receipt = ReceiptBuilder::new(
+    let import_receipt = ReceiptBuilder::new(
         action_kind::REGISTRY_IMPORT,
         &ws,
         &cp_passport,
         &cp_agent,
     )
     .build(&state.cp_keypair);
-    let receipt_id = receipt.id.as_ref().map(|h| h.hex.clone()).unwrap_or_default();
-    let _ = state.receipt_store.append(receipt);
+    let import_receipt_id = import_receipt
+        .id
+        .as_ref()
+        .map(|h| h.hex.clone())
+        .unwrap_or_default();
+    let _ = state.receipt_store.append(import_receipt);
+
+    let import_receipt_ch = ContentHash(import_receipt_id.clone());
+
+    // ── 6. Per-entry: rehash ID, preserve provenance, emit per-entry receipt ──
+    let mut imported = 0usize;
+    for src_entry in &package.entries {
+        // 6a — Build the entry: new workspace, new ID, original ID preserved
+        //      in imported_from for cross-workspace provenance.
+        let original_id = src_entry.id.clone();
+        let event       = src_entry.event.clone();
+        let entity      = src_entry.entity.clone();
+
+        let new_entry_id = format!(
+            "mem_{}",
+            recall_crypto::sha256_hex(
+                format!("{}:{}:{}", target_ws_id, entity, event).as_bytes()
+            )
+        );
+
+        let mut entry = src_entry.clone();
+        entry.id           = new_entry_id.clone();
+        entry.workspace_id = Some(common_proto::WorkspaceId {
+            value: target_ws_id.clone(),
+        });
+        entry.imported_from = if !original_id.is_empty() {
+            Some(common_proto::Hash { hex: original_id.clone() })
+        } else {
+            None
+        };
+
+        // 6b — Build a memory.write receipt for this entry.
+        //   causal_predecessors[0] = the import receipt (so "why is this here?"
+        //                            walks back to the import action)
+        //   evidence_digest        = the source entry's original receipt ID
+        //                            (so cross-workspace lineage is queryable)
+        let source_receipt_ch = src_entry
+            .receipt_id
+            .as_ref()
+            .map(|h| ContentHash(h.hex.clone()));
+
+        let entry_passport = entry
+            .passport_id
+            .as_ref()
+            .map(|h| ContentHash(h.hex.clone()))
+            .unwrap_or_else(|| cp_passport.clone());
+        let entry_agent = entry
+            .agent_id
+            .as_ref()
+            .map(|a| AgentId(a.value.clone()))
+            .unwrap_or_else(|| cp_agent.clone());
+
+        let mut rb = ReceiptBuilder::new(
+            action_kind::MEMORY_WRITE,
+            &ws,
+            &entry_passport,
+            &entry_agent,
+        )
+        .with_causal_predecessor(&import_receipt_ch);
+        if let Some(src) = source_receipt_ch.as_ref() {
+            rb = rb.with_evidence_digest(src);
+        }
+        let entry_receipt = rb.build(&state.cp_keypair);
+        let entry_receipt_id = entry_receipt
+            .id
+            .as_ref()
+            .map(|h| h.hex.clone())
+            .unwrap_or_default();
+
+        // Attach the new receipt ID to the entry before storing.
+        if !entry_receipt_id.is_empty() {
+            entry.receipt_id = Some(common_proto::Hash {
+                hex: entry_receipt_id.clone(),
+            });
+        }
+
+        state.memory_store.insert(entry);
+        let _ = state.receipt_store.append(entry_receipt);
+        imported += 1;
+    }
+
+    let receipt_id = import_receipt_id;
 
     (StatusCode::OK, Json(serde_json::json!({
         "name":             name,

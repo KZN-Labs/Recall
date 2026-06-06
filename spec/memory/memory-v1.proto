@@ -34,6 +34,10 @@ message MemoryEntry {
   repeated recall.common.v1.CausalRef causal_predecessors = 17;
   recall.common.v1.CostAnnotation cost_annotation = 18;
   recall.common.v1.SealStatus seal_status = 19;
+  // If this entry was bulk-imported from a registry profile, the original
+  // memory ID in the publishing workspace. Lets cross-workspace audit queries
+  // walk back to the source of any imported entry.
+  recall.common.v1.Hash imported_from = 20;
 }
 
 // Conflict between two memory signals on the same entity.

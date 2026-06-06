@@ -7,6 +7,8 @@ use recall_passport::store::PassportStore;
 use recall_receipt::store::ReceiptStore;
 use recall_registry::RegistryStore;
 use recall_transport::subscribe::SubscribeHub;
+use std::collections::HashMap;
+use std::sync::RwLock;
 use sui_governance::SuiGovernanceClient;
 use walrus_memory::WalrusMemoryBackend;
 
@@ -28,6 +30,11 @@ pub struct AppState {
     pub walrus:           Option<WalrusMemoryBackend>,
     /// Explicit workspace registry (created via CreateWorkspace or auto-registered on write).
     pub workspace_store:  WorkspaceStore,
+    /// In-process cache of just-published registry package blobs keyed by
+    /// Walrus blob ID. Avoids the publisher→aggregator propagation lag when
+    /// the same control plane that published a profile is the one importing
+    /// it. Production deployments replace this with Redis or similar.
+    pub registry_blob_cache: RwLock<HashMap<String, Vec<u8>>>,
 }
 
 pub struct AppStateConfig {
@@ -71,6 +78,7 @@ impl AppState {
             enforcement:      crate::enforcement::EnforcementEngine::default(),
             walrus,
             workspace_store:  WorkspaceStore::default(),
+            registry_blob_cache: RwLock::new(HashMap::new()),
         })
     }
 }

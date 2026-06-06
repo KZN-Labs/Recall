@@ -57,6 +57,7 @@ pub fn build_entry(
             .collect(),
         cost_annotation,
         seal_status: 1, // UNSEALED
+        imported_from: None,
     };
 
     // Sign the canonical bytes with ACTOR key.

@@ -38,6 +38,23 @@ message RegistryProfile {
   ComponentBlobIds component_blob_ids = 14;
   // Cryptographic publisher identity — Ed25519 passport that signed the publish.
   string publisher_passport_id = 15;
+  // Who can import this profile.
+  RegistryVisibility visibility = 16;
+}
+
+// Who can call `POST /registry/:name/:version/import` for this profile.
+//
+// PUBLIC (default) — anyone holding the profile name + version can import.
+//   Matches npm / PyPI / Docker Hub public-package semantics. The publish
+//   signature is what guarantees authorship; discoverability is the feature.
+//
+// RESTRICTED — the importer must hold a passport that has been granted
+//   import capability by the publisher. (Grant flow + Seal-encrypted blob
+//   are tracked separately; today RESTRICTED profiles refuse all imports
+//   with HTTP 501 so this enum value can be set without surprising callers.)
+enum RegistryVisibility {
+  REGISTRY_VISIBILITY_PUBLIC     = 0;
+  REGISTRY_VISIBILITY_RESTRICTED = 1;
 }
 
 message WorkspaceConfig {
