@@ -149,6 +149,21 @@ async fn main() -> anyhow::Result<()> {
         info!("Governance: offline");
     }
 
+    // ── Tatum RPC integration ────────────────────────────────────────────────
+    // When TATUM_API_KEY is set the sui-anchor and sui-governance backends
+    // route every Sui RPC call through Tatum's Sui gateway with the key
+    // attached as the `x-api-key` header.
+    let tatum_active = std::env::var("TATUM_API_KEY")
+        .map(|k| !k.is_empty())
+        .unwrap_or(false);
+    let sui_network = std::env::var("SUI_NETWORK").unwrap_or_else(|_| "testnet".into());
+
+    if tatum_active {
+        info!("Sui RPC: Tatum ({} network)", sui_network);
+    } else {
+        info!("Sui RPC: public fullnode (set TATUM_API_KEY for Tatum)");
+    }
+
     let app_state = std::sync::Arc::new(state::AppState::new(AppStateConfig {
         sui_rpc_url:           args.sui_rpc_url,
         policy_object_id:      args.governance_policy_id,

@@ -3,9 +3,57 @@ use recall_proto::receipt as receipt_proto;
 use std::env;
 use tracing::{info, warn};
 
-const SUI_TESTNET_RPC: &str = "https://fullnode.testnet.sui.io:443";
 const CLOCK_OBJECT_ID: &str = "0x6";
 const GAS_BUDGET: &str = "100000000";
+
+/// Resolve the Sui RPC endpoint.
+///
+/// Priority:
+///   1. `TATUM_API_KEY` set  → Tatum's Sui gateway (`SUI_NETWORK`-aware)
+///   2. Otherwise            → public Sui fullnode for `SUI_NETWORK`
+///
+/// `SUI_NETWORK` defaults to `testnet`.
+fn get_sui_rpc_url() -> String {
+    let network = env::var("SUI_NETWORK").unwrap_or_else(|_| "testnet".to_string());
+
+    // Tatum RPC takes priority if API key is set
+    if let Ok(api_key) = env::var("TATUM_API_KEY") {
+        if !api_key.is_empty() {
+            return match network.as_str() {
+                "mainnet" => "https://sui-mainnet.gateway.tatum.io".to_string(),
+                "devnet"  => "https://sui-devnet.gateway.tatum.io".to_string(),
+                _         => "https://sui-testnet.gateway.tatum.io".to_string(),
+            };
+        }
+    }
+
+    // Fallback to public fullnode
+    match network.as_str() {
+        "mainnet" => "https://fullnode.mainnet.sui.io:443".to_string(),
+        "devnet"  => "https://fullnode.devnet.sui.io:443".to_string(),
+        _         => "https://fullnode.testnet.sui.io:443".to_string(),
+    }
+}
+
+/// Build the reqwest client used for every Sui RPC call.
+///
+/// When `TATUM_API_KEY` is set the key is attached as the `x-api-key` header
+/// on every request — Tatum's gateway authenticates against that header.
+fn build_rpc_client() -> reqwest::Client {
+    let mut headers = reqwest::header::HeaderMap::new();
+    if let Ok(api_key) = env::var("TATUM_API_KEY") {
+        if !api_key.is_empty() {
+            if let Ok(val) = reqwest::header::HeaderValue::from_str(&api_key) {
+                headers.insert("x-api-key", val);
+            }
+        }
+    }
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_default()
+}
 
 pub struct SuiAnchorDriver {
     sui_rpc_url: String,
@@ -16,15 +64,14 @@ impl SuiAnchorDriver {
     pub fn new(sui_rpc_url: &str, _package_id: &str, _sender_address: &str) -> Self {
         Self {
             sui_rpc_url: sui_rpc_url.to_string(),
-            client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
-                .build()
-                .unwrap(),
+            client: build_rpc_client(),
         }
     }
 
+    /// Build a driver using `TATUM_API_KEY` + `SUI_NETWORK` if set, otherwise a
+    /// public fullnode for the configured (or default `testnet`) network.
     pub fn testnet() -> Self {
-        Self::new(SUI_TESTNET_RPC, "", "")
+        Self::new(&get_sui_rpc_url(), "", "")
     }
 
     /// Anchor a receipt batch to Sui. Returns the Sui transaction digest.

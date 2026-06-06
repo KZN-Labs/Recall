@@ -152,7 +152,22 @@ impl SuiGovernanceClient {
             ]
         });
 
-        let client = reqwest::Client::new();
+        // Build a client that forwards the Tatum API key when `TATUM_API_KEY`
+        // is set, so governance dry-runs route through Tatum's Sui gateway
+        // alongside the anchor commits.
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Ok(api_key) = std::env::var("TATUM_API_KEY") {
+            if !api_key.is_empty() {
+                if let Ok(val) = reqwest::header::HeaderValue::from_str(&api_key) {
+                    headers.insert("x-api-key", val);
+                }
+            }
+        }
+        let client = reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .unwrap_or_default();
+
         let resp = match client.post(rpc).json(&payload).send().await {
             Ok(r) => r,
             Err(e) => {

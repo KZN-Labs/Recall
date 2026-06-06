@@ -4,6 +4,59 @@
 
 ---
 
+## Tatum x Walrus Hackathon
+
+RECALL is submitted to the [Tatum x Build on Sui with Walrus](https://tatum.io) hackathon.
+
+RECALL uses:
+- **Tatum Sui RPC** — all Sui transactions (receipt anchoring, governance checks, Move contract calls) route through Tatum's enterprise-grade Sui nodes
+- **Walrus** — every agent memory write is a permanent blob
+- **Sui** — receipt Merkle roots anchored on-chain via Move contracts
+- **MemWal** — official Walrus Memory SDK as the storage layer
+
+### Quickstart with Tatum
+
+1. Get a free Tatum API key at https://dashboard.tatum.io/
+2. Set env vars:
+
+```bash
+export TATUM_API_KEY="your-tatum-api-key"
+export SUI_NETWORK="testnet"
+export MEMWAL_PRIVATE_KEY="your-memwal-key"
+export MEMWAL_ACCOUNT_ID="your-memwal-account-id"
+export RECALL_SUI_PRIVATE_KEY="suiprivkey1..."
+export RECALL_SUI_SENDER_ADDRESS="0x..."
+export RECALL_RECEIPT_ANCHOR_PACKAGE_ID="0x..."
+export RECALL_ANCHOR_REGISTRY_ID="0x..."
+```
+
+3. Start the control plane:
+
+```bash
+./target/release/recall-control-plane --walrus-testnet
+```
+
+Look for this line in the startup logs to confirm Tatum is active:
+
+```
+INFO recall_control_plane: Sui RPC: Tatum (testnet network)
+```
+
+4. Run the demo:
+
+```bash
+python demo_seed.py
+recall failures
+recall why --entity sarah@email.com
+recall anchors --verify
+```
+
+Every Sui transaction in the demo routes through Tatum's RPC.
+Every memory write is a permanent Walrus blob.
+Every receipt Merkle root is anchored on Sui testnet via the `receipt_anchor` Move package.
+
+---
+
 ## The problem
 
 When multiple AI agents share memory today, there are no rules. A support agent offers a customer a 10% credit. A fraud agent flags the same customer for suspicious activity. A billing agent reads memory and applies the credit anyway — because it never saw the fraud flag. Nobody knows. There is no trail.
