@@ -29,3 +29,6 @@ _proto/
 
 # TypeScript SDK build output — rebuilt with: cd sdks/typescript && bun x tsup src/index.ts --format cjs,esm
 sdks/typescript/dist/
+
+# Audit PDFs from 
+*-audit.pdf
