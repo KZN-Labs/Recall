@@ -3,20 +3,17 @@ use recall_proto::receipt as receipt_proto;
 use std::env;
 use tracing::{info, warn};
 
-const CLOCK_OBJECT_ID: &str = "0x6";
-const GAS_BUDGET: &str = "100000000";
+const CLOCK_OBJECT_ID: &str =
+    "0x0000000000000000000000000000000000000000000000000000000000000006";
+const GAS_BUDGET: u64 = 10_000_000; // 0.01 SUI (actual anchor cost ~0.003 SUI)
 
-/// Resolve the Sui RPC endpoint.
+/// Resolve the Sui RPC endpoint for transaction *execution* (Tatum gateway).
 ///
 /// Priority:
 ///   1. `TATUM_API_KEY` set  → Tatum's Sui gateway (`SUI_NETWORK`-aware)
 ///   2. Otherwise            → public Sui fullnode for `SUI_NETWORK`
-///
-/// `SUI_NETWORK` defaults to `testnet`.
 fn get_sui_rpc_url() -> String {
     let network = env::var("SUI_NETWORK").unwrap_or_else(|_| "testnet".to_string());
-
-    // Tatum RPC takes priority if API key is set
     if let Ok(api_key) = env::var("TATUM_API_KEY") {
         if !api_key.is_empty() {
             return match network.as_str() {
@@ -26,8 +23,6 @@ fn get_sui_rpc_url() -> String {
             };
         }
     }
-
-    // Fallback to public fullnode
     match network.as_str() {
         "mainnet" => "https://fullnode.mainnet.sui.io:443".to_string(),
         "devnet"  => "https://fullnode.devnet.sui.io:443".to_string(),
@@ -35,10 +30,19 @@ fn get_sui_rpc_url() -> String {
     }
 }
 
-/// Build the reqwest client used for every Sui RPC call.
-///
-/// When `TATUM_API_KEY` is set the key is attached as the `x-api-key` header
-/// on every request — Tatum's gateway authenticates against that header.
+/// Public fullnode URL for transaction *building* only.
+/// `unsafe_moveCall` (tx builder helper) was removed from Tatum's hosted nodes;
+/// we build the unsigned tx bytes here, then sign + execute via Tatum.
+fn get_build_rpc_url() -> String {
+    let network = env::var("SUI_NETWORK").unwrap_or_else(|_| "testnet".to_string());
+    match network.as_str() {
+        "mainnet" => "https://fullnode.mainnet.sui.io:443".to_string(),
+        _         => "https://fullnode.testnet.sui.io:443".to_string(),
+    }
+}
+
+/// Build the reqwest client used for every Tatum Sui RPC call.
+/// Attaches `x-api-key` header when `TATUM_API_KEY` is set.
 fn build_rpc_client() -> reqwest::Client {
     let mut headers = reqwest::header::HeaderMap::new();
     if let Ok(api_key) = env::var("TATUM_API_KEY") {
@@ -55,27 +59,36 @@ fn build_rpc_client() -> reqwest::Client {
         .unwrap_or_default()
 }
 
+/// Plain client for the public fullnode (no auth needed).
+fn build_plain_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_default()
+}
+
 pub struct SuiAnchorDriver {
-    sui_rpc_url: String,
-    client: reqwest::Client,
+    sui_rpc_url: String,  // Tatum (or public fallback) — used for execution
+    build_url:   String,  // Public fullnode — used for tx building
+    client:      reqwest::Client,
+    plain:       reqwest::Client,
 }
 
 impl SuiAnchorDriver {
     pub fn new(sui_rpc_url: &str, _package_id: &str, _sender_address: &str) -> Self {
         Self {
             sui_rpc_url: sui_rpc_url.to_string(),
-            client: build_rpc_client(),
+            build_url:   get_build_rpc_url(),
+            client:      build_rpc_client(),
+            plain:        build_plain_client(),
         }
     }
 
-    /// Build a driver using `TATUM_API_KEY` + `SUI_NETWORK` if set, otherwise a
-    /// public fullnode for the configured (or default `testnet`) network.
     pub fn testnet() -> Self {
         Self::new(&get_sui_rpc_url(), "", "")
     }
 
     /// Anchor a receipt batch to Sui. Returns the Sui transaction digest.
-    /// Falls back to a synthetic digest if env vars are not configured.
     pub async fn anchor_batch(&self, batch: &receipt_proto::ReceiptBatch) -> Result<String> {
         let merkle_root = batch
             .merkle_root
@@ -89,7 +102,6 @@ impl SuiAnchorDriver {
                 return Ok(fake_digest(&merkle_root.hex));
             }
         };
-
         let package_id = match env::var("RECALL_RECEIPT_ANCHOR_PACKAGE_ID") {
             Ok(id) if !id.is_empty() => id,
             _ => {
@@ -97,7 +109,6 @@ impl SuiAnchorDriver {
                 return Ok(fake_digest(&merkle_root.hex));
             }
         };
-
         let registry_id = match env::var("RECALL_ANCHOR_REGISTRY_ID") {
             Ok(id) if !id.is_empty() => id,
             _ => {
@@ -105,7 +116,6 @@ impl SuiAnchorDriver {
                 return Ok(fake_digest(&merkle_root.hex));
             }
         };
-
         let signing_key = match parse_private_key(&private_key_str) {
             Ok(k) => k,
             Err(e) => {
@@ -117,11 +127,11 @@ impl SuiAnchorDriver {
         let sender = sui_address_from_ed25519(&signing_key.verifying_key().to_bytes());
 
         match self
-            .submit_ptb(&sender, &signing_key, &package_id, &registry_id, merkle_root, batch)
+            .submit_anchor(&sender, &signing_key, &package_id, &registry_id, merkle_root, batch)
             .await
         {
             Ok(digest) => {
-                info!("Sui anchor committed: {digest}");
+                info!("Sui anchor committed via Tatum: {digest}");
                 Ok(digest)
             }
             Err(e) => {
@@ -131,7 +141,7 @@ impl SuiAnchorDriver {
         }
     }
 
-    async fn submit_ptb(
+    async fn submit_anchor(
         &self,
         sender: &str,
         signing_key: &ed25519_dalek::SigningKey,
@@ -143,21 +153,38 @@ impl SuiAnchorDriver {
         use base64::Engine;
         use ed25519_dalek::Signer;
 
-        let merkle_bytes = hex::decode(&merkle_root.hex)
-            .unwrap_or_else(|_| merkle_root.hex.as_bytes().to_vec());
-
+        // The Move contract converts merkle_root/walrus_blob_id/workspace_id
+        // via `string::utf8(...)`, so we must pass UTF-8 encoded hex strings,
+        // not raw hash bytes (which are invalid UTF-8).
+        let merkle_bytes = merkle_root.hex.as_bytes().to_vec();
         let receipt_count = batch.receipt_ids.len() as u64;
 
-        // commit_anchor(merkle_root: vector<u8>, walrus_blob_id: vector<u8>,
-        //               workspace_id: vector<u8>, receipt_count: u64,
-        //               registry: &mut AnchorRegistry, clock: &Clock)
+        // ── Step 1: Build unsigned tx bytes via public fullnode ───────────────
+        //
+        // `unsafe_moveCall` is a convenience RPC that builds the transaction
+        // server-side. Tatum's enterprise nodes removed it (security hardening);
+        // the public fullnode still supports it. We only use the public node for
+        // building — signing and execution go through Tatum.
+        //
+        // SuiJSON encoding for newer fullnode versions:
+        //   vector<u8>  → "0x" + hex string of raw bytes
+        //   u64         → decimal string
+        //   Object      → "0x..." object ID string
+        // Actual on-chain ABI (from sui_getNormalizedMoveModulesByPackage):
+        //   commit_anchor(registry: &mut AnchorRegistry,
+        //                 merkle_root: vector<u8>,
+        //                 walrus_blob_id: vector<u8>,
+        //                 workspace_id: vector<u8>,
+        //                 receipt_count: u64,
+        //                 clock: &Clock,
+        //                 ctx: &mut TxContext)   ← injected, not passed
         let args = serde_json::json!([
-            bcs_bytes_arg(&merkle_bytes),
-            bcs_bytes_arg(&[]),           // walrus_blob_id (not in ReceiptBatch proto)
-            bcs_bytes_arg(b"recall"),     // workspace_id
-            bcs_u64_arg(receipt_count),
-            registry_id,
-            CLOCK_OBJECT_ID
+            registry_id,                                    // &mut AnchorRegistry
+            format!("0x{}", hex::encode(&merkle_bytes)),   // vector<u8>
+            "0x",                                           // vector<u8> (empty)
+            format!("0x{}", hex::encode(b"recall")),        // vector<u8>
+            receipt_count.to_string(),                      // u64
+            "0x6"                                           // &Clock
         ]);
 
         let build_payload = serde_json::json!({
@@ -172,21 +199,21 @@ impl SuiAnchorDriver {
                 [],
                 args,
                 null,
-                GAS_BUDGET,
-                "WaitForLocalExecution"
+                GAS_BUDGET.to_string(),
+                "Commit"
             ]
         });
 
         let build_resp: serde_json::Value = self
-            .client
-            .post(&self.sui_rpc_url)
+            .plain
+            .post(&self.build_url)
             .json(&build_payload)
             .send()
             .await
-            .map_err(|e| anyhow!("Sui RPC POST failed: {e}"))?
+            .map_err(|e| anyhow!("build POST failed: {e}"))?
             .json()
             .await
-            .map_err(|e| anyhow!("Sui RPC parse failed: {e}"))?;
+            .map_err(|e| anyhow!("build parse failed: {e}"))?;
 
         if let Some(err) = build_resp.get("error") {
             return Err(anyhow!("Sui RPC build error: {err}"));
@@ -200,11 +227,20 @@ impl SuiAnchorDriver {
             .decode(tx_bytes_b64)
             .map_err(|e| anyhow!("base64 decode txBytes: {e}"))?;
 
-        // Intent bytes: [TransactionData=0, AppId::Sui=0, Version=0] ++ tx bytes
+        // ── Step 2: Sign ──────────────────────────────────────────────────────
+        // Intent: [TransactionData=0, AppId::Sui=0, Version=0] ++ tx bytes
         let mut intent_msg = vec![0u8, 0u8, 0u8];
         intent_msg.extend_from_slice(&raw_tx);
 
-        let sig = signing_key.sign(&intent_msg);
+        // Sui requires signing the BLAKE2b-256 digest of the intent message
+        // (not the raw intent message itself).
+        use blake2::digest::consts::U32;
+        use blake2::{Blake2b, Digest};
+        let mut hasher = Blake2b::<U32>::new();
+        hasher.update(&intent_msg);
+        let intent_digest: [u8; 32] = hasher.finalize().into();
+
+        let sig = signing_key.sign(&intent_digest);
         let pub_bytes = signing_key.verifying_key().to_bytes();
 
         // Sui compact signature: flag(0x00=Ed25519) ++ sig(64) ++ pubkey(32)
@@ -214,6 +250,8 @@ impl SuiAnchorDriver {
         full_sig.extend_from_slice(&pub_bytes);
         let sig_b64 = base64::engine::general_purpose::STANDARD.encode(&full_sig);
 
+        // ── Step 3: Execute via TATUM ─────────────────────────────────────────
+        // This is the call that goes through Tatum's enterprise Sui nodes.
         let exec_payload = serde_json::json!({
             "jsonrpc": "2.0",
             "id": 2,
@@ -237,6 +275,11 @@ impl SuiAnchorDriver {
             .await
             .map_err(|e| anyhow!("Sui execute parse failed: {e}"))?;
 
+        // Tatum rate-limit returns a non-standard JSON body (no "error" key)
+        if exec_resp.get("statusCode").and_then(|v| v.as_u64()) == Some(429) {
+            return Err(anyhow!("Tatum rate limit (429) — retry next anchor tick"));
+        }
+
         if let Some(err) = exec_resp.get("error") {
             return Err(anyhow!("Sui execute error: {err}"));
         }
@@ -248,7 +291,7 @@ impl SuiAnchorDriver {
     }
 }
 
-// ── BCS helpers ───────────────────────────────────────────────────────────────
+// ── BCS helpers for unsafe_moveCall JSON args ─────────────────────────────────
 
 fn bcs_bytes_arg(data: &[u8]) -> serde_json::Value {
     use base64::Engine;
@@ -306,27 +349,20 @@ fn parse_bech32_key(key_str: &str) -> Result<ed25519_dalek::SigningKey> {
     if bytes.len() < 33 {
         return Err(anyhow!("bech32 key payload too short: {} bytes", bytes.len()));
     }
-    // First byte is the scheme flag (0x00 = Ed25519)
     ed25519_dalek::SigningKey::try_from(&bytes[1..33])
         .map_err(|e| anyhow!("invalid Ed25519 key from bech32: {e}"))
 }
 
 fn sui_address_from_ed25519(pub_key: &[u8]) -> String {
-    // Env var override takes priority — always use this for funded wallets
     if let Ok(addr) = env::var("RECALL_SUI_SENDER_ADDRESS") {
         if !addr.is_empty() {
             return addr;
         }
     }
-
-    // Correct Sui address derivation:
-    //   Blake2b-256( scheme_flag || public_key_bytes )
-    // scheme_flag = 0x00 for Ed25519
     use blake2::digest::consts::U32;
     use blake2::{Blake2b, Digest};
-
     let mut hasher = Blake2b::<U32>::new();
-    hasher.update([0x00u8]); // Ed25519 scheme flag
+    hasher.update([0x00u8]);
     hasher.update(pub_key);
     format!("0x{}", hex::encode(hasher.finalize()))
 }
