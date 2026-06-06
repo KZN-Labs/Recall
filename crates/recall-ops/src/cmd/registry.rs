@@ -77,13 +77,22 @@ pub async fn import(api: &ApiClient, name_version: &str) -> Result<()> {
             eprintln!("{} Profile not found: {}", fmt::err("✗"), name_version);
         }
         Some(p) => {
-            println!("{} Importing {} into new workspace…",
-                fmt::dim("→"), p.name.white().bold());
-            println!("{} Profile imported as workspace: {}",
-                fmt::ok("✓"),
-                format!("ws_{}", p.name).cyan(),
+            println!("{} Profile found: {}@{}",
+                fmt::ok("✓"), p.name.white().bold(), p.version
             );
-            println!("  {} {} memories pre-loaded", fmt::label("info:"), p.memory_count);
+            println!("  {} {}", fmt::label("author:  "), p.author.truecolor(140,140,140));
+            println!("  {} {} memories on record", fmt::label("size:    "), p.memory_count);
+            println!();
+            println!("{} {}",
+                fmt::dim("!"),
+                "Import is not yet wired end-to-end — the profile metadata is verified, but"
+                    .truecolor(180, 160, 100));
+            println!("  {}",
+                "memory entries are not yet copied into a new workspace. Track the issue in"
+                    .truecolor(180, 160, 100));
+            println!("  {}",
+                "GitHub. Use `recall registry inspect <name@version>` to view the profile."
+                    .truecolor(180, 160, 100));
             println!();
         }
     }
@@ -192,7 +201,12 @@ pub async fn publish(api: &ApiClient) -> Result<()> {
             println!();
             println!("{} Published {}@{}", fmt::ok("✓"), name.white().bold(), version);
             if let Some(blob) = resp.get("walrus_blob_id").and_then(|v| v.as_str()) {
-                println!("  {}  {}", fmt::label("blob id:"), fmt::blob(blob));
+                println!("  {}  {}", fmt::label("blob id: "), fmt::blob(blob));
+                println!("  {}  {}",
+                    fmt::label("verify:  "),
+                    format!("https://aggregator.walrus-testnet.walrus.space/v1/blobs/{blob}")
+                        .truecolor(120, 120, 160)
+                );
             }
             println!();
         }
