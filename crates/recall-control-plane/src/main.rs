@@ -5,6 +5,7 @@ use tonic::transport::Server;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod anchor_scheduler;
 mod enforcement;
 mod http;
 mod services;
@@ -70,6 +71,14 @@ struct Args {
 
     #[arg(long, env = "RECALL_LOG_FORMAT", default_value = "text")]
     log_format: String,
+
+    /// Anchor scheduler interval in seconds. Each tick batches all
+    /// receipts written since the last anchor, computes a Merkle root,
+    /// and submits it to the `receipt_anchor` Move package on Sui.
+    ///
+    /// Set to `0` to disable the scheduler entirely (no anchors emitted).
+    #[arg(long, env = "RECALL_ANCHOR_INTERVAL_SECS", default_value_t = 30)]
+    anchor_interval_secs: u64,
 }
 
 #[tokio::main]
@@ -159,6 +168,13 @@ async fn main() -> anyhow::Result<()> {
             .expect("failed to bind HTTP listener");
         axum::serve(listener, router).await.expect("HTTP server error");
     });
+
+    // Spawn the anchor scheduler — seals batches of receipts under a Merkle
+    // root and submits each root to the receipt_anchor Move package on Sui.
+    anchor_scheduler::spawn(
+        app_state.clone(),
+        std::time::Duration::from_secs(args.anchor_interval_secs),
+    );
 
     Server::builder()
         .add_service(AdmissionServiceServer::new(AdmissionServiceImpl::new(app_state.clone())))
