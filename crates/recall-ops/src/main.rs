@@ -95,6 +95,15 @@ enum Commands {
         /// Save secret key to file
         #[arg(long)] out: Option<String>,
     },
+
+    /// Browse recent Sui anchor commits (Merkle roots committed on-chain)
+    Anchors {
+        /// Number of recent anchors to show
+        #[arg(long, default_value_t = 10)] limit: usize,
+        /// For each anchor, fetch its Merkle root from the Walrus testnet
+        /// aggregator and confirm the blob resolves (HTTP 200).
+        #[arg(long)] verify: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -203,6 +212,10 @@ async fn main() -> Result<()> {
                     fmt::dim("(store securely)"),
                 );
             }
+        }
+
+        Commands::Anchors { limit, verify } => {
+            cmd::anchors::run(&api, limit, verify).await?;
         }
     }
 

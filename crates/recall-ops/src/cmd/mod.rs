@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod anchors;
 pub mod export;
 pub mod failures;
 pub mod inspect;

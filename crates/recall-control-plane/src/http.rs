@@ -99,6 +99,14 @@ pub struct ReceiptJson {
     pub seal_status: i32,
     pub deny_reason: Option<String>,
     pub reputation_delta: f64,
+    /// Content hash of the underlying evidence this receipt anchors. For
+    /// `anchor.commit` receipts this is the Merkle root of the receipt batch.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub evidence_digest: String,
+    /// Receipt IDs this receipt causally depends on. Empty for most receipts;
+    /// `anchor.commit` lists the receipt IDs in the batch.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub causal_predecessors: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -196,6 +204,8 @@ fn default_trust()    -> i32    { 2 }
 pub struct ListReceiptsQuery {
     pub workspace_id: Option<String>,
     pub action_kind: Option<String>,
+    /// If set, return only the most recent N receipts.
+    pub limit: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -216,6 +226,12 @@ fn receipt_to_json(r: &recall_proto::receipt::Receipt) -> ReceiptJson {
         seal_status: r.seal_status,
         deny_reason: if r.deny_reason.is_empty() { None } else { Some(r.deny_reason.clone()) },
         reputation_delta: r.reputation_delta as f64,
+        evidence_digest: r.evidence_digest.as_ref().map(|h| h.hex.clone()).unwrap_or_default(),
+        causal_predecessors: r
+            .causal_predecessors
+            .iter()
+            .filter_map(|c| c.receipt_id.as_ref().map(|h| h.hex.clone()))
+            .collect(),
     }
 }
 
@@ -296,6 +312,14 @@ async fn list_receipts(
         if !ak.is_empty() {
             receipts.retain(|r| r.action_kind == ak);
         }
+    }
+    // Newest first when a limit is requested — that's almost always what the
+    // caller wants ("most recent N anchor commits", etc.).
+    if let Some(n) = q.limit {
+        receipts.sort_by_key(|r| std::cmp::Reverse(
+            r.timestamp.as_ref().map(|t| t.seconds).unwrap_or(0)
+        ));
+        receipts.truncate(n);
     }
     Json(receipts.iter().map(receipt_to_json).collect())
 }

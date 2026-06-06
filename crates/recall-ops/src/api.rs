@@ -53,6 +53,12 @@ pub struct Receipt {
     pub seal_status:         i32,
     pub deny_reason:         Option<String>,
     pub reputation_delta:    f64,
+    /// For `anchor.commit` receipts: hex Merkle root of the anchored batch.
+    #[serde(default)]
+    pub evidence_digest:     String,
+    /// For `anchor.commit` receipts: receipt IDs included in the batch.
+    #[serde(default)]
+    pub causal_predecessors: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -153,6 +159,21 @@ impl ApiClient {
     pub async fn list_receipts(&self, ws: &str, action_kind: Option<&str>) -> Result<Vec<Receipt>> {
         let mut url = format!("{}/receipts?workspace_id={}", self.base, encode(ws));
         if let Some(ak) = action_kind { url.push_str(&format!("&action_kind={}", ak)); }
+        let r = self.client.get(&url).send().await?;
+        if !r.status().is_success() { return Ok(vec![]); }
+        Ok(r.json().await?)
+    }
+
+    /// Fetch the most recent N receipts of a given action_kind across all workspaces.
+    pub async fn list_recent_receipts(
+        &self,
+        action_kind: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<Receipt>> {
+        let mut url = format!("{}/receipts?limit={}", self.base, limit);
+        if let Some(ak) = action_kind {
+            url.push_str(&format!("&action_kind={}", encode(ak)));
+        }
         let r = self.client.get(&url).send().await?;
         if !r.status().is_success() { return Ok(vec![]); }
         Ok(r.json().await?)

@@ -795,6 +795,11 @@ entries = <span class="kw">await</span> memory.read(<span class="str">"sarah@ema
             <td>List all agents in the workspace with their role, trust level, enforcement stage, and reputation score.</td>
           </tr>
           <tr>
+            <td>recall anchors</td>
+            <td>--limit, --verify</td>
+            <td>Browse the most recent Sui anchor commits — Merkle roots committed on-chain via the <code style="color:var(--fg);font-size:11px;">receipt_anchor</code> Move package. Each row shows timestamp, Merkle root, anchor receipt id, and batch size. With <code style="color:var(--fg);font-size:11px;">--verify</code>, each Merkle root is fetched from the Walrus testnet aggregator and the row is annotated ✓ on HTTP 200 or ✗ otherwise.</td>
+          </tr>
+          <tr>
             <td>recall rollback</td>
             <td>--workspace, --to</td>
             <td>Roll back all memory entries written after the given Unix timestamp. Emits a rollback receipt.</td>
@@ -853,6 +858,22 @@ Receipt trail for sarah@email.com in ws_customer-ops:
   [14:22:19] risk-agent       MEMORY_WRITE  global_risk_score=HIGH    trust=2  ✓
 
 Receipts anchored: Sui tx 8kPqR...mNzT3  (block 4821093)</div>
+
+      <p style="margin-top:32px;margin-bottom:16px; font-size:12px;"><strong>Example output — recall anchors --verify</strong></p>
+      <div class="cli-output">$ recall anchors --limit 3 --verify
+
+RECENT SUI ANCHORS
+────────────────────────────────────────────────────────────────────────
+TIMESTAMP             MERKLE ROOT             SUI TX DIGEST              BATCH
+2026-06-05 23:45:01   0xabc123ef…f1a2b3       0x123abc…9f8d              12
+  ↳ ✓  blob 0xabc123ef…f1a2b3 verified on Walrus testnet
+2026-06-05 23:40:01   0xdef456ab…c4d5e6       0x456def…7a3c              8
+  ↳ ✓  blob 0xdef456ab…c4d5e6 verified on Walrus testnet
+2026-06-05 23:35:01   0x789aaa11…bb22cc       0x789ghi…2e1f              15
+  ↳ ✓  blob 0x789aaa11…bb22cc verified on Walrus testnet
+
+  → 3 anchors
+  → verified against https://aggregator.walrus-testnet.walrus.space</div>
     </section>
 
     <!-- ── Registry ── -->
