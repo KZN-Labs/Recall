@@ -26,3 +26,6 @@ _proto/
 
 # Claude Code local config
 .claude/
+
+# TypeScript SDK build output — rebuilt with: cd sdks/typescript && bun x tsup src/index.ts --format cjs,esm
+sdks/typescript/dist/
