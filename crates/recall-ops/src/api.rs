@@ -179,6 +179,32 @@ impl ApiClient {
         Ok(r.json().await?)
     }
 
+    /// Import a published registry package into a new workspace. The control
+    /// plane fetches the package blob from Walrus, decodes it, and bulk-inserts
+    /// every memory entry under `target_workspace_id` (defaults to `ws_<name>`).
+    pub async fn import_registry(
+        &self,
+        name: &str,
+        version: &str,
+        target_workspace_id: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let url = format!(
+            "{}/registry/{}/{}/import",
+            self.base, encode(name), encode(version)
+        );
+        let body = serde_json::json!({
+            "target_workspace_id": target_workspace_id,
+        });
+        let r = self.client.post(&url).json(&body).send().await?;
+        let status = r.status();
+        if !status.is_success() {
+            let body: serde_json::Value = r.json().await.unwrap_or_default();
+            let msg = body.get("error").and_then(|v| v.as_str()).unwrap_or("unknown error");
+            return Err(anyhow!("import failed (HTTP {status}): {msg}"));
+        }
+        Ok(r.json().await?)
+    }
+
     pub async fn get_receipt(&self, id: &str) -> Result<Receipt> {
         self.get(&format!("/receipts/{}", id)).await
     }

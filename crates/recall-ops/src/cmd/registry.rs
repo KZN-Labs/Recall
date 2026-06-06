@@ -65,35 +65,72 @@ pub async fn inspect(api: &ApiClient, name_version: &str) -> Result<()> {
 }
 
 pub async fn import(api: &ApiClient, name_version: &str) -> Result<()> {
-    if !api.health().await { eprintln!("{}", fmt::err("✗ control plane unreachable")); return Ok(()); }
+    if !api.health().await {
+        eprintln!("{}", fmt::err("✗ control plane unreachable"));
+        return Ok(());
+    }
 
-    let profiles = api.list_registry(None).await?;
-    let profile = profiles.iter().find(|p| {
-        format!("{}@{}", p.name, p.version) == name_version || p.name == name_version
-    });
-
-    match profile {
+    // Parse "name@version" — fall back to looking up by name if no @.
+    let (name, version) = match name_version.split_once('@') {
+        Some((n, v)) => (n.to_string(), v.to_string()),
         None => {
-            eprintln!("{} Profile not found: {}", fmt::err("✗"), name_version);
+            // Resolve to the most recent version of `name`.
+            let profiles = api.list_registry(None).await?;
+            match profiles.iter().find(|p| p.name == name_version) {
+                Some(p) => (p.name.clone(), p.version.clone()),
+                None => {
+                    eprintln!("{} Profile not found: {}", fmt::err("✗"), name_version);
+                    return Ok(());
+                }
+            }
         }
-        Some(p) => {
-            println!("{} Profile found: {}@{}",
-                fmt::ok("✓"), p.name.white().bold(), p.version
+    };
+
+    println!("{} Importing {}@{}…",
+        fmt::dim("→"),
+        name.white().bold(),
+        version
+    );
+
+    match api.import_registry(&name, &version, None).await {
+        Ok(result) => {
+            let ws       = result.get("target_workspace").and_then(|v| v.as_str()).unwrap_or("");
+            let loaded   = result.get("memories_loaded").and_then(|v| v.as_u64()).unwrap_or(0);
+            let blob     = result.get("blob_id").and_then(|v| v.as_str()).unwrap_or("");
+            let receipt  = result.get("receipt_id").and_then(|v| v.as_str()).unwrap_or("");
+
+            println!();
+            println!("{} Profile imported into {}",
+                fmt::ok("✓"),
+                ws.cyan()
             );
-            println!("  {} {}", fmt::label("author:  "), p.author.truecolor(140,140,140));
-            println!("  {} {} memories on record", fmt::label("size:    "), p.memory_count);
+            println!("  {} {} memor{} loaded into the new workspace",
+                fmt::label("loaded:  "),
+                loaded.to_string().white(),
+                if loaded == 1 { "y" } else { "ies" },
+            );
+            if !blob.is_empty() {
+                println!("  {} {}",
+                    fmt::label("source:  "),
+                    fmt::blob(blob));
+            }
+            if !receipt.is_empty() {
+                println!("  {} {}",
+                    fmt::label("receipt: "),
+                    receipt.truecolor(160, 160, 160));
+            }
             println!();
-            println!("{} {}",
-                fmt::dim("!"),
-                "Import is not yet wired end-to-end — the profile metadata is verified, but"
-                    .truecolor(180, 160, 100));
             println!("  {}",
-                "memory entries are not yet copied into a new workspace. Track the issue in"
-                    .truecolor(180, 160, 100));
-            println!("  {}",
-                "GitHub. Use `recall registry inspect <name@version>` to view the profile."
-                    .truecolor(180, 160, 100));
+                format!(
+                    "Try: recall logs --workspace {} | recall agents --workspace {}",
+                    ws.trim_start_matches("ws_"),
+                    ws.trim_start_matches("ws_")
+                ).truecolor(110, 110, 110)
+            );
             println!();
+        }
+        Err(e) => {
+            eprintln!("{} {}", fmt::err("✗"), e);
         }
     }
     Ok(())

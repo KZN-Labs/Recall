@@ -3,8 +3,21 @@ package recall.registry.v1;
 
 import "google/protobuf/timestamp.proto";
 import "common.proto";
+import "memory/memory-v1.proto";
 
 option go_package = "github.com/KZN-Labs/Recall-/gen/go/recall/registry/v1;registryv1";
+
+// The on-Walrus representation of a published agent memory profile.
+// `publish_registry` encodes this struct as the blob bytes; `import_registry`
+// fetches the blob and decodes it back. Contains both the profile metadata
+// (queryable via the registry index) and the actual memory entries that
+// reproduce the source workspace.
+message RegistryPackage {
+  RegistryProfile profile = 1;
+  repeated recall.memory.v1.MemoryEntry entries = 2;
+  // Reserved for future schema migrations. Always "v1" today.
+  string format_version = 3;
+}
 
 // A published agent memory profile in the registry.
 message RegistryProfile {

@@ -793,7 +793,7 @@ async fn publish_registry(
         0
     };
 
-    // ── 7. Build canonical profile proto and write it to Walrus ───────────────
+    // ── 7. Build canonical profile proto + entries package, write to Walrus ──
     let published_at = chrono::Utc::now();
     let profile_proto_for_blob = reg_proto::RegistryProfile {
         name:                   body.name.clone(),
@@ -813,23 +813,38 @@ async fn publish_registry(
         ..Default::default()
     };
 
-    let mut profile_bytes = Vec::new();
-    if let Err(e) = prost::Message::encode(&profile_proto_for_blob, &mut profile_bytes) {
-        tracing::warn!("registry profile encode failed: {e}");
+    // Pull entries from the source workspace and pack them into a
+    // RegistryPackage. The package — not the bare profile — is what gets
+    // written to Walrus so that `recall registry import` can later reconstitute
+    // the workspace from the blob alone, with no trust in the control plane.
+    let entries: Vec<memory_proto::MemoryEntry> = body
+        .workspace_id
+        .as_ref()
+        .map(|ws| state.memory_store.list_by_workspace(ws))
+        .unwrap_or_default();
+
+    let package = reg_proto::RegistryPackage {
+        profile:        Some(profile_proto_for_blob.clone()),
+        entries:        entries.clone(),
+        format_version: "v1".to_string(),
+    };
+    let mut package_bytes = Vec::new();
+    if let Err(e) = prost::Message::encode(&package, &mut package_bytes) {
+        tracing::warn!("registry package encode failed: {e}");
     }
 
     let walrus_blob_id: String = if let Some(walrus) = &state.walrus {
-        match walrus.put_blob_raw(&profile_bytes).await {
+        match walrus.put_blob_raw(&package_bytes).await {
             Ok(blob) => {
                 tracing::info!(
-                    "Registry profile {}@{} stored on Walrus: {}",
-                    body.name, body.version, blob.0
+                    "Registry package {}@{} stored on Walrus ({} entries, {} bytes): {}",
+                    body.name, body.version, entries.len(), package_bytes.len(), blob.0
                 );
                 blob.0
             }
             Err(e) => {
                 tracing::warn!(
-                    "Walrus write failed for registry profile ({e}); using deterministic ID"
+                    "Walrus write failed for registry package ({e}); using deterministic ID"
                 );
                 format!(
                     "0x{}",
@@ -874,6 +889,125 @@ async fn publish_registry(
             "error": e.to_string()
         }))).into_response(),
     }
+}
+
+// ── Registry import ──────────────────────────────────────────────────────────
+
+#[derive(Deserialize, Default)]
+struct ImportRegistryBody {
+    /// Override the target workspace ID. Defaults to `ws_<name>`.
+    target_workspace_id: Option<String>,
+}
+
+async fn import_registry(
+    State(state): State<Arc<AppState>>,
+    Path((name, version)): Path<(String, String)>,
+    body: Option<Json<ImportRegistryBody>>,
+) -> impl IntoResponse {
+    let target_ws_override = body.map(|Json(b)| b.target_workspace_id).unwrap_or(None);
+
+    // ── 1. Look up the profile in the registry index ─────────────────────────
+    let profile = match state.registry_store.get(&name, &version) {
+        Some(p) => p,
+        None => {
+            return (StatusCode::NOT_FOUND, Json(serde_json::json!({
+                "error": format!("profile {}@{} not found", name, version)
+            }))).into_response();
+        }
+    };
+
+    // ── 2. Fetch the package blob from Walrus ─────────────────────────────────
+    let blob_id = match profile.walrus_blob.as_ref() {
+        Some(b) if !b.blob_id.is_empty() => b.blob_id.clone(),
+        _ => {
+            return (StatusCode::FAILED_DEPENDENCY, Json(serde_json::json!({
+                "error": "profile has no Walrus blob — cannot import",
+            }))).into_response();
+        }
+    };
+
+    let walrus = match state.walrus.as_ref() {
+        Some(w) => w,
+        None => {
+            return (StatusCode::FAILED_DEPENDENCY, Json(serde_json::json!({
+                "error": "Walrus backend not configured — cannot fetch profile blob",
+            }))).into_response();
+        }
+    };
+
+    let blob_bytes = match walrus
+        .get_blob_raw(&recall_core::ids::WalrusBlobId(blob_id.clone()))
+        .await
+    {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::error!("registry import: Walrus fetch failed: {e}");
+            return (StatusCode::BAD_GATEWAY, Json(serde_json::json!({
+                "error":  "failed to fetch profile blob from Walrus",
+                "detail": e.to_string(),
+                "blob_id": blob_id,
+            }))).into_response();
+        }
+    };
+
+    // ── 3. Decode the RegistryPackage ─────────────────────────────────────────
+    use prost::Message as _;
+    let package = match recall_proto::registry::RegistryPackage::decode(blob_bytes.as_slice()) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!("registry import: blob decode failed: {e}");
+            return (StatusCode::BAD_GATEWAY, Json(serde_json::json!({
+                "error": "profile blob is not a valid RegistryPackage",
+                "detail": e.to_string(),
+            }))).into_response();
+        }
+    };
+
+    // ── 4. Create the target workspace and bulk-insert entries ────────────────
+    let target_ws_id = target_ws_override
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| format!("ws_{}", name));
+
+    state.workspace_store.ensure_exists(&target_ws_id);
+
+    let mut imported = 0usize;
+    for src_entry in &package.entries {
+        let mut entry = src_entry.clone();
+        // Re-stamp the workspace so the entry lives in the target workspace
+        // even though it was authored in the source. The original entry ID is
+        // preserved so receipts that referenced it still resolve.
+        entry.workspace_id = Some(common_proto::WorkspaceId {
+            value: target_ws_id.clone(),
+        });
+        state.memory_store.insert(entry);
+        imported += 1;
+    }
+
+    // ── 5. Emit a registry.import receipt ─────────────────────────────────────
+    let cp_agent    = AgentId("00000000-0000-0000-0000-000000000001".to_string());
+    let cp_passport = ContentHash("cp_passport".to_string());
+    let ws          = WorkspaceId(target_ws_id.clone());
+
+    let receipt = ReceiptBuilder::new(
+        action_kind::REGISTRY_IMPORT,
+        &ws,
+        &cp_passport,
+        &cp_agent,
+    )
+    .build(&state.cp_keypair);
+    let receipt_id = receipt.id.as_ref().map(|h| h.hex.clone()).unwrap_or_default();
+    let _ = state.receipt_store.append(receipt);
+
+    (StatusCode::OK, Json(serde_json::json!({
+        "name":             name,
+        "version":          version,
+        "target_workspace": target_ws_id,
+        "memories_loaded":  imported,
+        "blob_id":          blob_id,
+        "format_version":   package.format_version,
+        "receipt_id":       receipt_id,
+        "ok":               true,
+    }))).into_response()
 }
 
 // ── Handoff ───────────────────────────────────────────────────────────────────
@@ -938,6 +1072,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/stats/:workspace_id",                 get(workspace_stats))
         .route("/conflicts/:workspace_id",             get(get_conflicts))
         .route("/registry",                            get(list_registry).post(publish_registry))
+        .route("/registry/:name/:version/import",      axum::routing::post(import_registry))
         .route("/handoff",                             axum::routing::post(handoff))
         .layer(CorsLayer::permissive())
         .with_state(state)
