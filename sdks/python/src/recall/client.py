@@ -199,7 +199,7 @@ class RecallClient:
             self._global_keypair.public_key_bytes().hex().encode()
         )
 
-    async def connect(
+    def connect(
         self,
         workspace_name: str,
         config: Optional[WorkspaceConfig] = None,
@@ -207,26 +207,40 @@ class RecallClient:
         agent: Optional[str] = None,
         model: str = "claude-sonnet-4-6",
         api_key: Optional[str] = None,
-    ) -> Workspace:
-        """Connect to a workspace. Returns a handle for read/write operations."""
-        if config is None:
-            suffix = sha256_hex(workspace_name.encode())[:8]
-            config = WorkspaceConfig(
-                agent=agent or f"agent-{suffix}",
-                model=model,
-                api_key=api_key,
-                http_endpoint=self._http_endpoint,
+    ) -> "_WorkspaceHandle":
+        """Connect to a workspace.
+
+        Returns a dual-mode handle that supports BOTH patterns:
+
+            # As an awaitable (long-lived workspace, your code manages lifetime)
+            ws = await recall.connect("acme-ops", agent="support", model="claude-sonnet-4-6")
+            await ws.write(entity="...", event="...", value=...)
+
+            # As an async context manager (scoped — recommended for short-lived agents)
+            async with recall.connect("acme-ops", agent="support", model="claude-sonnet-4-6") as ws:
+                await ws.write(entity="...", event="...", value=...)
+        """
+        async def _open() -> Workspace:
+            cfg = config
+            if cfg is None:
+                suffix = sha256_hex(workspace_name.encode())[:8]
+                cfg = WorkspaceConfig(
+                    agent=agent or f"agent-{suffix}",
+                    model=model,
+                    api_key=api_key,
+                    http_endpoint=self._http_endpoint,
+                )
+            keypair = RecallKeypair.generate()
+            workspace_id = f"ws_{workspace_name}"
+            return Workspace(
+                workspace_id=workspace_id,
+                workspace_name=workspace_name,
+                config=cfg,
+                keypair=keypair,
+                memwal=self._memwal,
             )
 
-        keypair = RecallKeypair.generate()
-        workspace_id = f"ws_{workspace_name}"
-        return Workspace(
-            workspace_id=workspace_id,
-            workspace_name=workspace_name,
-            config=config,
-            keypair=keypair,
-            memwal=self._memwal,
-        )
+        return _WorkspaceHandle(_open)
 
     async def handoff(
         self,
@@ -332,3 +346,37 @@ class RecallClient:
                 "published_at": datetime.now(tz=timezone.utc).isoformat(),
                 "immutable":    True,
             }
+
+
+# ── Internal: dual-mode handle returned by RecallClient.connect() ────────────
+
+
+class _WorkspaceHandle:
+    """
+    Return value of :py:meth:`RecallClient.connect`.
+
+    Implements both `__await__` and `__aenter__` / `__aexit__` so the same
+    call site can be used as `await recall.connect(...)` or as
+    `async with recall.connect(...) as ws`. Modeled after the dual-mode
+    pattern used by :py:class:`asyncio.Lock`.
+    """
+
+    __slots__ = ("_open_fn", "_workspace")
+
+    def __init__(self, open_fn):
+        self._open_fn = open_fn
+        self._workspace: Optional[Workspace] = None
+
+    def __await__(self):
+        return self._open_fn().__await__()
+
+    async def __aenter__(self) -> Workspace:
+        self._workspace = await self._open_fn()
+        return self._workspace
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+        # The MemWal client is owned by the parent RecallClient and persists
+        # across workspaces, so there is nothing to tear down here. The
+        # context-manager form exists purely for scoping clarity.
+        self._workspace = None
+        return False
