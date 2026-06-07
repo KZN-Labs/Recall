@@ -8,20 +8,68 @@
 
 RECALL is submitted to the [Tatum x Build on Sui with Walrus](https://tatum.io) hackathon.
 
-RECALL uses:
-- **Tatum Sui RPC** — all Sui transactions (receipt anchoring, governance checks, Move contract calls) route through Tatum's enterprise-grade Sui nodes
-- **Walrus** — every agent memory write is a permanent blob
-- **Sui** — receipt Merkle roots anchored on-chain via Move contracts
-- **MemWal** — official Walrus Memory SDK as the storage layer
+### What Tatum powers in RECALL
+
+Tatum is the **transaction execution layer** for every Sui interaction RECALL
+makes. The control plane never talks to a public fullnode for execution — every
+signed transaction flows through Tatum's hosted Sui RPC with the API key
+attached as `x-api-key`. Specifically, Tatum carries:
+
+- **Receipt anchor commits** — every 30 seconds the anchor scheduler batches
+  receipts under a Merkle root and calls `receipt_anchor::commit_anchor(...)`
+  on Sui. The signed PTB is submitted via `sui_executeTransactionBlock` against
+  Tatum's gateway, and the resulting on-chain digest is returned as proof of
+  anchoring.
+- **Governance dry-runs** — capability checks against the on-chain policy
+  object (`recall::governance`) use Tatum's `sui_devInspectTransactionBlock`
+  for cheap reads with no key in play.
+- **Network selection** — `SUI_NETWORK` (mainnet/testnet/devnet) is honored
+  transparently. Switching networks is a one-line env change; the same code
+  path routes to `sui-mainnet.gateway.tatum.io`,
+  `sui-testnet.gateway.tatum.io`, or `sui-devnet.gateway.tatum.io`.
+- **Reliability** — Tatum's hosted nodes give us consistent latency and
+  rate-limit headroom that public fullnodes don't, which matters for the
+  every-30-seconds anchor cadence.
+
+Alongside Tatum, RECALL uses **Walrus** for permanent memory blobs, **Sui Move**
+for the on-chain anchor contract, and the **MemWal SDK** as the Walrus Memory
+storage layer.
+
+### Live on Sui mainnet
+
+The `receipt_anchor` Move package is deployed to **Sui mainnet** and the
+control plane is committing real, paid anchor transactions through Tatum:
+
+| | Mainnet |
+|--|--|
+| Package ID | `0xe7fcb433f605c961dc670f2cdea11b0414c88e0e060929f27323fd52660a04f1` |
+| AnchorRegistry | `0xa8d6626b850db7549e98faa2548b6969c1329d3866e93d4c96f348a0fac29066` |
+| Deploy tx | [`7ntAR6io…`](https://suiscan.xyz/mainnet/tx/7ntAR6ioegwNogE9QekB51dDWUFXHUFCdrKfZ3pra29M) |
+| Sample anchor | [`6KNLCWLR…`](https://suiscan.xyz/mainnet/tx/6KNLCWLRECXx3Vy5mcsvhiGEfvd51hKH91SBH2jBWsVx) |
+
+### Bugs fixed during the build
+
+Two Sui RPC bugs surfaced during integration and are fixed on this branch:
+
+1. **Intent signature digest** — Sui requires Ed25519 signatures over the
+   BLAKE2b-256 *digest* of the intent message, not the raw intent bytes.
+   Initial implementation signed the raw bytes and txs were rejected with
+   "Invalid user signature." Fixed in `backends/sui-anchor/src/lib.rs`.
+2. **UTF-8 vs raw bytes for `string::utf8`** — the on-chain `commit_anchor`
+   function calls `string::utf8(merkle_root)` on its byte vector inputs, so the
+   payload must be the UTF-8 hex string, not raw hash bytes. Passing raw bytes
+   succeeded at the RPC layer but Move-aborted on execution.
+
+Both fixes are verified end-to-end on Sui mainnet.
 
 ### Quickstart with Tatum
 
-1. Get a free Tatum API key at https://dashboard.tatum.io/
+1. Get a Tatum API key at https://dashboard.tatum.io/
 2. Set env vars:
 
 ```bash
 export TATUM_API_KEY="your-tatum-api-key"
-export SUI_NETWORK="testnet"
+export SUI_NETWORK="mainnet"                 # or testnet
 export MEMWAL_PRIVATE_KEY="your-memwal-key"
 export MEMWAL_ACCOUNT_ID="your-memwal-account-id"
 export RECALL_SUI_PRIVATE_KEY="suiprivkey1..."
@@ -39,7 +87,7 @@ export RECALL_ANCHOR_REGISTRY_ID="0x..."
 Look for this line in the startup logs to confirm Tatum is active:
 
 ```
-INFO recall_control_plane: Sui RPC: Tatum (testnet network)
+INFO recall_control_plane: Sui RPC: Tatum (mainnet network)
 ```
 
 4. Run the demo:
@@ -53,7 +101,11 @@ recall anchors --verify
 
 Every Sui transaction in the demo routes through Tatum's RPC.
 Every memory write is a permanent Walrus blob.
-Every receipt Merkle root is anchored on Sui testnet via the `receipt_anchor` Move package.
+Every receipt Merkle root is anchored on Sui mainnet via the `receipt_anchor` Move package.
+
+> The submission video was recorded against Sui testnet while the integration
+> was being validated. The mainnet deployment above is live now and the same
+> code path produces real on-chain anchor transactions.
 
 ---
 
