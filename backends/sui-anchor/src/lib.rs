@@ -47,7 +47,12 @@ impl SuiAnchorDriver {
         Self::new(&get_sui_rpc_url(), "", "")
     }
 
-    /// Anchor a receipt batch to Sui. Returns the Sui transaction digest.
+    /// Anchor a receipt batch to Sui. Returns one of:
+    /// - a real Sui transaction digest (base58, ~44 chars), on successful
+    ///   on-chain submission;
+    /// - an `UNANCHORED:<reason>` string when env vars are missing, keys are
+    ///   invalid, or submission fails. The prefix is deliberately ugly so a
+    ///   synthetic value can never be mistaken for a confirmed on-chain tx.
     pub async fn anchor_batch(&self, batch: &receipt_proto::ReceiptBatch) -> Result<String> {
         let merkle_root = batch
             .merkle_root
@@ -57,29 +62,29 @@ impl SuiAnchorDriver {
         let private_key_str = match env::var("RECALL_SUI_PRIVATE_KEY") {
             Ok(k) if !k.is_empty() => k,
             _ => {
-                warn!("RECALL_SUI_PRIVATE_KEY not set; using synthetic anchor digest");
-                return Ok(fake_digest(&merkle_root.hex));
+                warn!("RECALL_SUI_PRIVATE_KEY not set; emitting UNANCHORED");
+                return Ok(unanchored("no_private_key"));
             }
         };
         let package_id = match env::var("RECALL_RECEIPT_ANCHOR_PACKAGE_ID") {
             Ok(id) if !id.is_empty() => id,
             _ => {
-                warn!("RECALL_RECEIPT_ANCHOR_PACKAGE_ID not set; using synthetic anchor digest");
-                return Ok(fake_digest(&merkle_root.hex));
+                warn!("RECALL_RECEIPT_ANCHOR_PACKAGE_ID not set; emitting UNANCHORED");
+                return Ok(unanchored("no_package_id"));
             }
         };
         let registry_id = match env::var("RECALL_ANCHOR_REGISTRY_ID") {
             Ok(id) if !id.is_empty() => id,
             _ => {
-                warn!("RECALL_ANCHOR_REGISTRY_ID not set; using synthetic anchor digest");
-                return Ok(fake_digest(&merkle_root.hex));
+                warn!("RECALL_ANCHOR_REGISTRY_ID not set; emitting UNANCHORED");
+                return Ok(unanchored("no_registry_id"));
             }
         };
         let signing_key = match parse_private_key(&private_key_str) {
             Ok(k) => k,
             Err(e) => {
-                warn!("Invalid RECALL_SUI_PRIVATE_KEY: {e}; using synthetic anchor digest");
-                return Ok(fake_digest(&merkle_root.hex));
+                warn!("Invalid RECALL_SUI_PRIVATE_KEY: {e}; emitting UNANCHORED");
+                return Ok(unanchored("bad_private_key"));
             }
         };
 
@@ -94,8 +99,8 @@ impl SuiAnchorDriver {
                 Ok(digest)
             }
             Err(e) => {
-                warn!("Sui anchor submission failed ({e}); using synthetic digest");
-                Ok(fake_digest(&merkle_root.hex))
+                warn!("Sui anchor submission failed: {e}; emitting UNANCHORED");
+                Ok(unanchored(&format!("submit_failed:{e}")))
             }
         }
     }
@@ -274,6 +279,25 @@ fn sui_address_from_ed25519(pub_key: &[u8]) -> String {
     format!("0x{}", hex::encode(hasher.finalize()))
 }
 
-fn fake_digest(merkle_hex: &str) -> String {
-    format!("sui_tx_{}", &merkle_hex[..merkle_hex.len().min(16)])
+/// Build an `UNANCHORED:<reason>` marker. The prefix is opaque enough that the
+/// recall-ops CLI, downstream proto consumers, and human readers can never
+/// mistake it for a real base58 Sui tx digest.
+pub fn unanchored(reason: &str) -> String {
+    // Sanitize: spaces and colons in the reason would interfere with display
+    // and downstream parsing. Keep it short and shell-safe.
+    let safe: String = reason
+        .chars()
+        .map(|c| match c {
+            ' ' | '\t' | '\n' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .take(120)
+        .collect();
+    format!("UNANCHORED:{safe}")
+}
+
+/// True iff `digest` is a synthetic marker produced by [`unanchored`].
+pub fn is_unanchored(digest: &str) -> bool {
+    digest.starts_with("UNANCHORED:")
 }

@@ -41,7 +41,7 @@ pub async fn run(api: &ApiClient, limit: usize, verify: bool) -> Result<()> {
     println!("{}", "RECENT SUI ANCHORS".white().bold());
     fmt::sep();
     println!(
-        "{:<20}  {:<22}  {:<22}  {:>8}",
+        "{:<20}  {:<22}  {:<32}  {:>8}",
         "TIMESTAMP".truecolor(80, 80, 80),
         "MERKLE ROOT".truecolor(80, 80, 80),
         "SUI TX DIGEST".truecolor(80, 80, 80),
@@ -93,16 +93,34 @@ fn print_anchor_row(r: &Receipt) {
         .unwrap_or_else(|| "—".into());
 
     let merkle = short_hex(&r.evidence_digest);
-    let sui_tx = short_hex(&r.id); // anchor commits use the receipt id as the tx-like handle
     let batch  = r.causal_predecessors.len();
 
+    // The anchor scheduler stashes the actual Sui tx digest (or an
+    // `UNANCHORED:<reason>` marker if no on-chain submission happened) on the
+    // receipt's deny_reason field. Render real digests green and UNANCHORED in
+    // red so a synthetic value can never appear confirmed.
+    let raw_tx = r.deny_reason.as_deref().unwrap_or("");
+    let (tx_cell, tail) = if raw_tx.starts_with("UNANCHORED:") {
+        let reason = &raw_tx["UNANCHORED:".len()..];
+        let cell = "UNANCHORED".truecolor(230, 90, 90).bold().to_string();
+        let tail = format!("  ⚠ reason: {}", reason).truecolor(220, 140, 140).to_string();
+        (cell, Some(tail))
+    } else if raw_tx.is_empty() {
+        ("—".truecolor(120, 120, 120).to_string(), None)
+    } else {
+        (short_hex(raw_tx).truecolor(140, 200, 140).to_string(), None)
+    };
+
     println!(
-        "{:<20}  {:<22}  {:<22}  {:>8}",
+        "{:<20}  {:<22}  {:<32}  {:>8}",
         ts.truecolor(160, 160, 160),
         merkle.truecolor(180, 180, 220),
-        sui_tx.truecolor(180, 220, 180),
+        tx_cell,
         batch.to_string().white(),
     );
+    if let Some(t) = tail {
+        println!("    {}", t);
+    }
 }
 
 async fn verify_anchor(client: &reqwest::Client, r: &Receipt) {

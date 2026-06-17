@@ -53,7 +53,21 @@ fn print_receipt(r: &crate::api::Receipt) {
     kv("timestamp",   &fmt::ts(r.timestamp_secs));
     kv("seal_status", &r.seal_status.to_string().truecolor(120,120,120).to_string());
     if let Some(reason) = &r.deny_reason {
-        kv("deny_reason", &reason.yellow().to_string());
+        if r.action_kind == "anchor.commit" {
+            // For anchor receipts the deny_reason slot carries the Sui tx
+            // digest (or an UNANCHORED:<reason> marker). Render the two cases
+            // distinctly so a synthetic value never looks confirmed.
+            if let Some(why) = reason.strip_prefix("UNANCHORED:") {
+                kv("sui_tx",
+                   &format!("{} ⚠ {}",
+                            "UNANCHORED".truecolor(230,90,90).bold(),
+                            why.truecolor(220,140,140)));
+            } else {
+                kv("sui_tx", &reason.truecolor(140,200,140).to_string());
+            }
+        } else {
+            kv("deny_reason", &reason.yellow().to_string());
+        }
     }
     if r.reputation_delta != 0.0 {
         kv("rep_delta", &format!("{:+.4}", r.reputation_delta).truecolor(200,160,80).to_string());

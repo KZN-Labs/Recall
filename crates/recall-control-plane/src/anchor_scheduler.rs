@@ -24,7 +24,7 @@ use prost_types::Timestamp;
 use recall_core::ids::{AgentId, ContentHash, WorkspaceId};
 use recall_proto::{common as common_proto, receipt as receipt_proto};
 use recall_receipt::{action_kind, builder::ReceiptBuilder, merkle::merkle_root};
-use sui_anchor::SuiAnchorDriver;
+use sui_anchor::{unanchored, SuiAnchorDriver};
 use tracing::{debug, info, warn};
 
 use crate::state::AppState;
@@ -101,8 +101,8 @@ async fn tick(state: &Arc<AppState>, driver: &SuiAnchorDriver) -> anyhow::Result
     let sui_tx = match driver.anchor_batch(&batch).await {
         Ok(d) => d,
         Err(e) => {
-            warn!("Sui anchor submission errored: {e}; recording with synthetic digest");
-            format!("sui_tx_{}", &root.0[..16.min(root.0.len())])
+            warn!("Sui anchor submission errored: {e}; recording as UNANCHORED");
+            unanchored(&format!("driver_error:{e}"))
         }
     };
 
