@@ -102,22 +102,45 @@ def _sidecar_main() -> int:
     import asyncio
     import json
     import sys
+    import traceback
+
+    def _describe_exc(exc: BaseException) -> dict:
+        # Many SDK exceptions (httpx, anyio, asyncio.TimeoutError) have an empty
+        # str() — fall through to repr() and the exception type so the caller
+        # always gets *something* identifying the failure.
+        msg = str(exc) or repr(exc) or type(exc).__name__
+        tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
+        # Keep only the last few frames so the JSON stays small but still
+        # points at the offending SDK call.
+        tb_tail = "".join(tb[-6:]).strip() if tb else ""
+        return {
+            "ok": False,
+            "error": msg,
+            "exc_type": type(exc).__name__,
+            "traceback": tb_tail,
+        }
 
     try:
         payload = json.loads(sys.stdin.read() or "{}")
     except json.JSONDecodeError as exc:
-        json.dump({"ok": False, "error": f"invalid stdin JSON: {exc}"}, sys.stdout)
+        json.dump({"ok": False, "error": f"invalid stdin JSON: {exc}",
+                   "exc_type": "JSONDecodeError"}, sys.stdout)
         return 2
 
     content = payload.get("content")
     if not isinstance(content, str) or not content:
-        json.dump({"ok": False, "error": "missing or empty 'content' field"}, sys.stdout)
+        json.dump({"ok": False, "error": "missing or empty 'content' field",
+                   "exc_type": "InvalidPayload"}, sys.stdout)
         return 2
 
     async def run() -> dict:
         c = RecallMemWalClient()
         if not c._available:
-            return {"ok": False, "error": "memwal SDK unavailable or credentials missing"}
+            return {
+                "ok": False,
+                "error": "memwal SDK unavailable or credentials missing",
+                "exc_type": "Unavailable",
+            }
         try:
             job = await c.client.remember_and_wait(content)  # type: ignore[union-attr]
             # The SDK returns a RememberResult with .id / .blob_id / .owner /
@@ -132,10 +155,13 @@ def _sidecar_main() -> int:
                 or getattr(job, "blobId", None)
             )
             return {"ok": True, "job_id": str(job_id) if job_id else None, "blob_id": blob_id}
-        except Exception as exc:  # noqa: BLE001 — sidecar reports anything that fails
-            return {"ok": False, "error": str(exc)}
+        except BaseException as exc:  # noqa: BLE001 — sidecar reports anything that fails
+            return _describe_exc(exc)
         finally:
-            await c.close()
+            try:
+                await c.close()
+            except BaseException:
+                pass
 
     result = asyncio.run(run())
     json.dump(result, sys.stdout)

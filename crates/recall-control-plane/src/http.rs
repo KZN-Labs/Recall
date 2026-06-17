@@ -457,6 +457,10 @@ async fn memwal_sidecar_write(
     let python = std::env::var("RECALL_MEMWAL_PYTHON")
         .unwrap_or_else(|_| "python3".to_string());
     let module = "recall.memwal_client";
+    let timeout_secs = std::env::var("RECALL_MEMWAL_SIDECAR_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(45);
 
     // We send a compact JSON envelope; the sidecar reads {"content": "..."}.
     // The content is the entry serialized as JSON (so MemWal indexes the
@@ -470,6 +474,7 @@ async fn memwal_sidecar_write(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
         .spawn()
         .map_err(|e| anyhow::anyhow!("spawn sidecar {python} -m {module}: {e}"))?;
 
@@ -479,8 +484,20 @@ async fn memwal_sidecar_write(
         stdin.shutdown().await.ok();
     }
 
-    let out = child.wait_with_output().await
-        .map_err(|e| anyhow::anyhow!("await sidecar: {e}"))?;
+    // Bound the sidecar wall-clock — without this, an SDK hang stalls the
+    // request indefinitely. On timeout we drop the child (kill_on_drop)
+    // and surface a typed error so the caller can fall back.
+    let wait = child.wait_with_output();
+    let out = match tokio::time::timeout(
+        std::time::Duration::from_secs(timeout_secs),
+        wait,
+    ).await {
+        Ok(Ok(o))  => o,
+        Ok(Err(e)) => return Err(anyhow::anyhow!("await sidecar: {e}")),
+        Err(_)     => return Err(anyhow::anyhow!(
+            "sidecar timeout after {timeout_secs}s (RECALL_MEMWAL_SIDECAR_TIMEOUT_SECS)"
+        )),
+    };
     let stdout = String::from_utf8_lossy(&out.stdout).to_string();
     let stderr = String::from_utf8_lossy(&out.stderr).to_string();
 
@@ -492,8 +509,24 @@ async fn memwal_sidecar_write(
         ))?;
 
     if !parsed["ok"].as_bool().unwrap_or(false) {
-        let err = parsed["error"].as_str().unwrap_or("(no error message)");
-        return Err(anyhow::anyhow!("sidecar error: {err}"));
+        // Synthesize a non-empty error string even when the SDK exception's
+        // str() came back empty: prefer error, then exc_type, then traceback.
+        let err = parsed["error"].as_str().unwrap_or("");
+        let exc_type = parsed["exc_type"].as_str().unwrap_or("");
+        let tb = parsed["traceback"].as_str().unwrap_or("");
+        let detail = if !err.is_empty() {
+            if !exc_type.is_empty() { format!("{exc_type}: {err}") } else { err.to_string() }
+        } else if !exc_type.is_empty() {
+            format!("{exc_type} (no message)")
+        } else {
+            "(no error message)".to_string()
+        };
+        let suffix = if !tb.is_empty() {
+            format!(" — traceback tail: {}", tb.lines().last().unwrap_or(""))
+        } else {
+            String::new()
+        };
+        return Err(anyhow::anyhow!("sidecar error: {detail}{suffix}"));
     }
     let job_id = parsed["job_id"].as_str().unwrap_or("").to_string();
     let blob_id = parsed["blob_id"].as_str()
@@ -651,33 +684,63 @@ async fn write_memory(
     let use_memwal = std::env::var("RECALL_USE_MEMWAL")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
+    let fallback_on_error = std::env::var("RECALL_MEMWAL_FALLBACK_ON_ERROR")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
 
-    let walrus_blob_id: Option<String> = if use_memwal {
+    // storage_path captures which backend actually persisted the blob, so
+    // the receipt evidence and HTTP response don't silently claim MemWal
+    // when we degraded to the raw Walrus publisher.
+    let mut storage_path: &'static str = "walrus_raw";
+    let mut memwal_fallback_reason: Option<String> = None;
+
+    // Try MemWal first when requested. On failure with FALLBACK_ON_ERROR=1,
+    // fall through to the raw Walrus path; otherwise 503.
+    let memwal_result: Option<Result<String, String>> = if use_memwal {
         match memwal_sidecar_write(&entry).await {
             Ok((job_id, blob_id)) => {
                 tracing::info!(
                     "MemWal blob stored: job_id={} blob_id={}",
                     job_id, blob_id
                 );
-                Some(blob_id)
+                storage_path = "memwal";
+                Some(Ok(blob_id))
             }
             Err(e) => {
                 tracing::error!("MemWal sidecar write failed: {e}");
-                return (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    Json(serde_json::json!({
-                        "error":  "MemWal write failed — memory not stored",
-                        "detail": e.to_string(),
-                        "hint":   "Check relayer.memwal.ai connectivity and that MEMWAL_PRIVATE_KEY + MEMWAL_ACCOUNT_ID are set, or unset RECALL_USE_MEMWAL to fall back to raw Walrus.",
-                    })),
-                ).into_response();
+                if fallback_on_error {
+                    tracing::warn!(
+                        "MemWal fallback active — degrading this write to raw Walrus publisher (RECALL_MEMWAL_FALLBACK_ON_ERROR=1)"
+                    );
+                    memwal_fallback_reason = Some(e.to_string());
+                    storage_path = "walrus_raw_fallback";
+                    None
+                } else {
+                    return (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        Json(serde_json::json!({
+                            "error":  "MemWal write failed — memory not stored",
+                            "detail": e.to_string(),
+                            "hint":   "Check relayer.memwal.ai connectivity and that MEMWAL_PRIVATE_KEY + MEMWAL_ACCOUNT_ID are set, set RECALL_MEMWAL_FALLBACK_ON_ERROR=1 to degrade to raw Walrus on sidecar errors, or unset RECALL_USE_MEMWAL.",
+                        })),
+                    ).into_response();
+                }
             }
         }
     } else {
+        None
+    };
+
+    let walrus_blob_id: Option<String> = if let Some(Ok(blob)) = memwal_result {
+        Some(blob)
+    } else {
+        // Either MemWal wasn't requested, or it failed and fallback is on.
         match state.walrus.as_ref() {
             Some(walrus) => match walrus.write_memory_entry(&entry).await {
                 Ok(blob) => {
-                    tracing::info!("Walrus blob stored: {}", blob.0);
+                    tracing::info!(
+                        "Walrus blob stored ({}): {}", storage_path, blob.0
+                    );
                     Some(blob.0)
                 }
                 Err(e) => {
@@ -688,6 +751,7 @@ async fn write_memory(
                             "error":  "Walrus write failed — memory not stored",
                             "detail": e.to_string(),
                             "hint":   "Check Walrus testnet connectivity, or set RECALL_USE_MEMWAL=1 to route through MemWal.",
+                            "memwal_fallback_reason": memwal_fallback_reason,
                         })),
                     ).into_response();
                 }
@@ -699,6 +763,7 @@ async fn write_memory(
                     Json(serde_json::json!({
                         "error": "Walrus backend not configured",
                         "hint":  "Start with --walrus-testnet, or set RECALL_USE_MEMWAL=1 + MEMWAL_PRIVATE_KEY + MEMWAL_ACCOUNT_ID.",
+                        "memwal_fallback_reason": memwal_fallback_reason,
                     })),
                 ).into_response();
             }
@@ -756,11 +821,15 @@ async fn write_memory(
     state.subscribe_hub.publish(&workspace_id, receipt);
 
     let mut resp = serde_json::json!({
-        "memory_id":  entry_id,
-        "receipt_id": receipt_id,
+        "memory_id":    entry_id,
+        "receipt_id":   receipt_id,
+        "storage_path": storage_path,
     });
     if let Some(bid) = walrus_blob_id {
         resp["walrus_blob_id"] = serde_json::Value::String(bid);
+    }
+    if let Some(reason) = memwal_fallback_reason {
+        resp["memwal_fallback_reason"] = serde_json::Value::String(reason);
     }
     (StatusCode::OK, Json(resp)).into_response()
 }

@@ -116,7 +116,11 @@ set +e
 # Whichever fires first is the blob we just persisted.
 BLOB_ID=""
 if [ -f /tmp/smoke_cp.log ]; then
-    BLOB_ID=$(grep -oE '(MemWal|Walrus) blob stored:.*blob_id=[A-Za-z0-9_-]{40,}|(MemWal|Walrus) blob stored: [A-Za-z0-9_-]{40,}' /tmp/smoke_cp.log \
+    # Match any of:
+    #   "MemWal blob stored: job_id=<...> blob_id=<id>"  (canonical MemWal path)
+    #   "Walrus blob stored: <id>"                       (raw Walrus, pre-fallback)
+    #   "Walrus blob stored (walrus_raw[_fallback]): <id>"  (post-fallback, tagged)
+    BLOB_ID=$(grep -oE '(MemWal|Walrus) blob stored( \([a-z_]+\))?:.*[A-Za-z0-9_-]{40,}' /tmp/smoke_cp.log \
         | head -1 | grep -oE '[A-Za-z0-9_-]{40,}' | tail -1)
 fi
 
