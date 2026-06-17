@@ -110,11 +110,14 @@ echo "Verifying real Walrus blobs..."
 # would otherwise tear down the whole script under `set -euo pipefail`.
 set +e
 
-# Primary source: scan the control plane's own logs for "Walrus blob stored:".
-# This is the most reliable signal because it confirms we actually wrote.
+# Primary source: scan the control plane's own logs for either
+#   "Walrus blob stored: <id>"  (raw-Walrus fallback path)
+#   "MemWal blob stored: job_id=<...> blob_id=<id>"  (canonical MemWal path)
+# Whichever fires first is the blob we just persisted.
 BLOB_ID=""
 if [ -f /tmp/smoke_cp.log ]; then
-    BLOB_ID=$(grep -oE 'Walrus blob stored: [A-Za-z0-9_-]{40,}' /tmp/smoke_cp.log | head -1 | awk '{print $NF}')
+    BLOB_ID=$(grep -oE '(MemWal|Walrus) blob stored:.*blob_id=[A-Za-z0-9_-]{40,}|(MemWal|Walrus) blob stored: [A-Za-z0-9_-]{40,}' /tmp/smoke_cp.log \
+        | head -1 | grep -oE '[A-Za-z0-9_-]{40,}' | tail -1)
 fi
 
 # Fallback: query the HTTP API and look for any 40+ char base64url-ish token
@@ -158,12 +161,16 @@ echo "────────────────────────�
 echo ""
 
 if [ -n "${RECALL_SUI_PRIVATE_KEY:-}" ] && [ -n "${RECALL_SUI_SENDER_ADDRESS:-}" ]; then
-    pass "Sui anchoring: LIVE"
+    pass "Sui anchoring: LIVE (client-built PTB submission)"
 else
-    warn "Sui anchoring: SYNTHETIC (set env vars for real anchoring)"
+    warn "Sui anchoring: UNANCHORED markers (set env vars for real anchoring)"
 fi
 
-pass "MemWal: ENABLED (required — checked at start)"
+if [ "${RECALL_USE_MEMWAL:-0}" = "1" ] || [ "${RECALL_USE_MEMWAL:-0}" = "true" ]; then
+    pass "Storage: MemWal SDK sidecar (canonical Walrus track path)"
+else
+    pass "Storage: raw Walrus publisher (fallback — set RECALL_USE_MEMWAL=1 for MemWal SDK)"
+fi
 
 echo ""
 echo "Smoke test complete."

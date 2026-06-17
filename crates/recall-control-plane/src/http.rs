@@ -442,6 +442,86 @@ async fn read_memory(
     Json(entries.iter().map(|e| entry_to_json(e, &state)).collect())
 }
 
+/// Invoke the MemWal Python sidecar to store a memory entry via the official
+/// MemWal SDK. Spawns `python3 -m recall.memwal_client`, pipes the entry JSON
+/// in on stdin, parses the sidecar's stdout for `job_id` + `blob_id`.
+///
+/// The sidecar path is resolved via `RECALL_MEMWAL_PYTHON` (a python binary
+/// with the `memwal` + `recall` packages installed) — defaults to `python3`.
+async fn memwal_sidecar_write(
+    entry: &memory_proto::MemoryEntry,
+) -> anyhow::Result<(String, String)> {
+    use tokio::io::AsyncWriteExt;
+    use tokio::process::Command;
+
+    let python = std::env::var("RECALL_MEMWAL_PYTHON")
+        .unwrap_or_else(|_| "python3".to_string());
+    let module = "recall.memwal_client";
+
+    // We send a compact JSON envelope; the sidecar reads {"content": "..."}.
+    // The content is the entry serialized as JSON (so MemWal indexes the
+    // full memory event, not just the user-supplied value).
+    let entry_json = serde_json::to_string(&entry_to_sidecar_payload(entry))?;
+    let stdin_payload = serde_json::json!({ "content": entry_json }).to_string();
+
+    let mut child = Command::new(&python)
+        .arg("-m")
+        .arg(module)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("spawn sidecar {python} -m {module}: {e}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(stdin_payload.as_bytes()).await
+            .map_err(|e| anyhow::anyhow!("write sidecar stdin: {e}"))?;
+        stdin.shutdown().await.ok();
+    }
+
+    let out = child.wait_with_output().await
+        .map_err(|e| anyhow::anyhow!("await sidecar: {e}"))?;
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+
+    // The sidecar writes its result JSON to stdout; stderr carries the
+    // benign frozen-runpy warning, which we ignore.
+    let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
+        .map_err(|e| anyhow::anyhow!(
+            "parse sidecar JSON: {e}; stdout={stdout}; stderr={stderr}"
+        ))?;
+
+    if !parsed["ok"].as_bool().unwrap_or(false) {
+        let err = parsed["error"].as_str().unwrap_or("(no error message)");
+        return Err(anyhow::anyhow!("sidecar error: {err}"));
+    }
+    let job_id = parsed["job_id"].as_str().unwrap_or("").to_string();
+    let blob_id = parsed["blob_id"].as_str()
+        .ok_or_else(|| anyhow::anyhow!("sidecar returned no blob_id: {parsed}"))?
+        .to_string();
+    Ok((job_id, blob_id))
+}
+
+/// Pull a minimal, JSON-safe view of a MemoryEntry for the MemWal sidecar.
+/// Avoids serializing prost_types::Struct directly, which doesn't round-trip
+/// cleanly through serde_json.
+fn entry_to_sidecar_payload(entry: &memory_proto::MemoryEntry) -> serde_json::Value {
+    serde_json::json!({
+        "id":             entry.id,
+        "workspace_id":   entry.workspace_id.as_ref().map(|w| &w.value),
+        "entity":         entry.entity,
+        "agent_id":       entry.agent_id.as_ref().map(|a| &a.value),
+        "passport_id":    entry.passport_id.as_ref().map(|p| &p.hex),
+        "event":          entry.event,
+        "tags":           entry.tags,
+        "scope":          entry.scope,
+        "trust_level":    entry.trust_level,
+        "model_provider": entry.model_provider,
+        "model_name":     entry.model_name,
+        "timestamp_secs": entry.timestamp.as_ref().map(|t| t.seconds),
+    })
+}
+
 async fn write_memory(
     State(state): State<Arc<AppState>>,
     Path((workspace_id, entity)): Path<(String, String)>,
@@ -563,37 +643,65 @@ async fn write_memory(
         ..Default::default()
     };
 
-    // ── Walrus write — required ───────────────────────────────────────────────
-    // Every memory write MUST land on Walrus. If Walrus is misconfigured or
-    // unreachable, the write is rejected — we never silently degrade to
-    // in-process-only storage.
-    let walrus_blob_id: Option<String> = match state.walrus.as_ref() {
-        Some(walrus) => match walrus.write_memory_entry(&entry).await {
-            Ok(blob) => {
-                tracing::info!("Walrus blob stored: {}", blob.0);
-                Some(blob.0)
+    // ── Persistent storage ────────────────────────────────────────────────────
+    // RECALL writes through MemWal (Walrus Memory) when RECALL_USE_MEMWAL=1
+    // is set — this is the canonical path for the Walrus track. The raw
+    // Walrus publisher HTTP path is kept as a fallback so offline dev and
+    // smoke tests still work without the MemWal SDK.
+    let use_memwal = std::env::var("RECALL_USE_MEMWAL")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    let walrus_blob_id: Option<String> = if use_memwal {
+        match memwal_sidecar_write(&entry).await {
+            Ok((job_id, blob_id)) => {
+                tracing::info!(
+                    "MemWal blob stored: job_id={} blob_id={}",
+                    job_id, blob_id
+                );
+                Some(blob_id)
             }
             Err(e) => {
-                tracing::error!("Walrus write failed: {e}");
+                tracing::error!("MemWal sidecar write failed: {e}");
                 return (
                     StatusCode::SERVICE_UNAVAILABLE,
                     Json(serde_json::json!({
-                        "error":  "Walrus write failed — memory not stored",
+                        "error":  "MemWal write failed — memory not stored",
                         "detail": e.to_string(),
-                        "hint":   "Check Walrus testnet connectivity and MEMWAL credentials",
+                        "hint":   "Check relayer.memwal.ai connectivity and that MEMWAL_PRIVATE_KEY + MEMWAL_ACCOUNT_ID are set, or unset RECALL_USE_MEMWAL to fall back to raw Walrus.",
                     })),
                 ).into_response();
             }
-        },
-        None => {
-            tracing::error!("Walrus backend not configured at write time");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({
-                    "error": "Walrus backend not configured",
-                    "hint":  "Start with --walrus-testnet and set MEMWAL_PRIVATE_KEY + MEMWAL_ACCOUNT_ID",
-                })),
-            ).into_response();
+        }
+    } else {
+        match state.walrus.as_ref() {
+            Some(walrus) => match walrus.write_memory_entry(&entry).await {
+                Ok(blob) => {
+                    tracing::info!("Walrus blob stored: {}", blob.0);
+                    Some(blob.0)
+                }
+                Err(e) => {
+                    tracing::error!("Walrus write failed: {e}");
+                    return (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        Json(serde_json::json!({
+                            "error":  "Walrus write failed — memory not stored",
+                            "detail": e.to_string(),
+                            "hint":   "Check Walrus testnet connectivity, or set RECALL_USE_MEMWAL=1 to route through MemWal.",
+                        })),
+                    ).into_response();
+                }
+            },
+            None => {
+                tracing::error!("Walrus backend not configured at write time");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({
+                        "error": "Walrus backend not configured",
+                        "hint":  "Start with --walrus-testnet, or set RECALL_USE_MEMWAL=1 + MEMWAL_PRIVATE_KEY + MEMWAL_ACCOUNT_ID.",
+                    })),
+                ).into_response();
+            }
         }
     };
 

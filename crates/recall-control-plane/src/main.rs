@@ -137,10 +137,16 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("  Run with: cargo run -p recall-control-plane -- --walrus-testnet");
     }
 
-    if let Some(ref pub_url) = walrus_publisher {
-        info!("Walrus: ENABLED  publisher={pub_url}");
+    let memwal_routed = std::env::var("RECALL_USE_MEMWAL")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if memwal_routed {
+        info!("Storage: MemWal SDK sidecar (canonical path — relayer.memwal.ai)");
+    } else if let Some(ref pub_url) = walrus_publisher {
+        info!("Storage: raw Walrus publisher (fallback) — {pub_url}");
+        info!("  Set RECALL_USE_MEMWAL=1 to route writes through the MemWal SDK.");
     } else {
-        info!("Walrus: offline (pass --walrus-testnet to enable)");
+        info!("Storage: offline (pass --walrus-testnet or RECALL_USE_MEMWAL=1)");
     }
 
     if args.sui_rpc_url.is_some() {

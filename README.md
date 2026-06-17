@@ -126,24 +126,45 @@ The script checks: build → control plane up → demo seed → conflict detecti
 
 ---
 
-## MemWal (Walrus Memory)
+## RECALL on top of MemWal (Walrus Memory)
 
-RECALL uses MemWal — the official Walrus Memory SDK — as the persistent
-storage layer. Every memory write is a permanent, verifiable blob on Walrus.
-MemWal credentials are required — the control plane will not start without them.
+RECALL is **the governance, conflict-detection and audit layer that extends
+MemWal** — the official Walrus Memory SDK. MemWal handles persistence (blobs
+on Walrus, semantic recall, async job lifecycle). RECALL adds the things
+MemWal deliberately does not: per-write Ed25519 authentication, conflict
+detection across agents, signed receipts, Merkle-batched Sui anchoring, and
+rollback.
+
+### Storage path
+
+The control plane routes memory writes through the MemWal Python SDK when
+`RECALL_USE_MEMWAL=1` is set. This is the canonical path for the Walrus
+track. A raw Walrus-publisher HTTP fallback is preserved for offline dev
+and smoke tests.
 
 ```bash
+# Required for either path
 export MEMWAL_PRIVATE_KEY="your-ed25519-private-key"
 export MEMWAL_ACCOUNT_ID="your-memwal-account-id"
+
+# Canonical: route writes through MemWal SDK (relayer.memwal.ai)
+export RECALL_USE_MEMWAL=1
+pip install memwal                  # the official SDK, used by a sidecar
 ```
 
 Get credentials at: [https://memory.walrus.xyz/](https://memory.walrus.xyz/)
 
-Every write:
-1. Governed by Move contracts on Sui
-2. Stored as a permanent blob on Walrus via MemWal
-3. Returns a blob ID you can verify independently:
-   `curl https://aggregator.walrus-testnet.walrus.space/v1/blobs/{blob_id}`
+### Every memory write
+
+1. **Verified** — Ed25519 signature over `{ws}:{entity}:{event}:{agent_id}`
+   checked against the agent's passport (publish_registry-style)
+2. **Governed** — admission policy from a Sui-deployed Move contract
+3. **Persisted** — written to Walrus via MemWal `remember()` (or raw Walrus
+   publisher in fallback mode), returning a blob ID
+4. **Receipted** — CP signs an immutable receipt linking entry → blob ID
+5. **Conflict-checked** — compared with existing entries on the same entity
+6. **Batched + anchored** — Merkle-root committed periodically to the
+   `receipt_anchor` Move package on Sui via a client-built PTB
 
 ---
 
