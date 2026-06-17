@@ -137,8 +137,13 @@ class Workspace:
         tags: Optional[list[str]] = None,
         scope: str = "internal",
     ) -> Receipt:
-        """Write a memory entry. POSTs to the control-plane REST API."""
+        """Write a memory entry. POSTs to the control-plane REST API.
+        Signs the canonical message `ws:entity:event:agent_id` so the CP can
+        verify the writer's identity (Ed25519). Without a valid signature the
+        CP returns 401.
+        """
         url = f"{self._config.http_endpoint}/memory/{self._workspace_id}/{entity}"
+        canonical = f"{self._workspace_id}:{entity}:{event}:{self._agent_id}".encode()
         body: dict[str, Any] = {
             "agent_id": self._agent_id,
             "passport_id": self._passport_id,
@@ -149,6 +154,8 @@ class Workspace:
             "model_provider": "anthropic",
             "model_name": self._config.model,
             "trust_level": self._config.trust_level,
+            "signature":  self._keypair.sign_hex(canonical),
+            "public_key": self._keypair.public_key_bytes().hex(),
         }
         if metadata:
             body["metadata"] = metadata

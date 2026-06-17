@@ -93,6 +93,12 @@ export class WorkspaceHandle {
       new TextEncoder().encode(`${this.agentId}:${input.event}:${ts}`)
     )
 
+    // Sign the canonical message `ws:entity:event:agent_id` so the control
+    // plane can verify the writer's identity (Ed25519). Without a valid
+    // signature the CP returns 401.
+    const canonical = new TextEncoder().encode(
+      `${this.workspaceId}:${input.entity}:${input.event}:${this.agentId}`
+    )
     const body = {
       agent_id: this.agentId,
       passport_id: this.passportId,
@@ -104,6 +110,8 @@ export class WorkspaceHandle {
       model_provider: 'anthropic',
       model_name: this.config.model,
       trust_level: this.config.trustLevel ?? 2,
+      signature:  signMessage(canonical, this.keypair),
+      public_key: toHex(this.keypair.publicKey),
     }
 
     let receiptId = fallbackReceiptId

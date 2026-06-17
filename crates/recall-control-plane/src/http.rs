@@ -196,6 +196,14 @@ pub struct WriteMemoryBody {
     pub model_name: String,
     #[serde(default = "default_trust")]
     pub trust_level: i32,
+    /// Ed25519 signature (hex) over canonical message
+    /// `format!("{ws}:{entity}:{event}:{agent_id}")`. Required.
+    #[serde(default)]
+    pub signature: String,
+    /// Ed25519 public key (hex). Must match the agent's passport on file if
+    /// registered; otherwise the write is accepted as self-attested.
+    #[serde(default)]
+    pub public_key: String,
 }
 
 fn default_scope()    -> String { "internal".into() }
@@ -439,6 +447,80 @@ async fn write_memory(
     Path((workspace_id, entity)): Path<(String, String)>,
     Json(body): Json<WriteMemoryBody>,
 ) -> impl IntoResponse {
+    use ed25519_dalek::{Signature, VerifyingKey};
+
+    // ── Authenticate writer ───────────────────────────────────────────────────
+    // The CP is the notary on the receipt, but agent_id and passport_id must be
+    // PROVEN by a verified Ed25519 signature — they cannot be trusted from the
+    // request body. Mirrors the publish_registry flow.
+    // Empty credentials = unauthenticated request → 401 (not 400). Malformed
+    // credentials = client error → 400.
+    if body.signature.is_empty() || body.public_key.is_empty() {
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({
+            "error": "signature and public_key required — write rejected"
+        }))).into_response();
+    }
+    let pub_key_bytes = match hex::decode(&body.public_key) {
+        Ok(b) => b,
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                "error": "invalid public_key hex"
+            }))).into_response();
+        }
+    };
+    let verifying_key = match VerifyingKey::try_from(pub_key_bytes.as_slice()) {
+        Ok(k) => k,
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                "error": "invalid Ed25519 public key"
+            }))).into_response();
+        }
+    };
+    let sig_bytes = match hex::decode(&body.signature) {
+        Ok(b) => b,
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                "error": "invalid signature hex"
+            }))).into_response();
+        }
+    };
+    let signature = match Signature::try_from(sig_bytes.as_slice()) {
+        Ok(s) => s,
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                "error": "invalid signature format"
+            }))).into_response();
+        }
+    };
+    let message = format!("{}:{}:{}:{}", workspace_id, entity, body.event, body.agent_id);
+    if verifying_key
+        .verify_strict(message.as_bytes(), &signature)
+        .is_err()
+    {
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({
+            "error": "signature verification failed — write rejected"
+        }))).into_response();
+    }
+    // If the passport is registered, the public key must match what's on file.
+    // Self-attested writes (no passport on file) are accepted with a warning —
+    // the signature still proves control of the public key.
+    let passport_hash = ContentHash(body.passport_id.clone());
+    match state.passport_store.get(&passport_hash) {
+        Some(p) => {
+            if p.public_key_hex() != body.public_key {
+                return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({
+                    "error": "public key does not match passport on file"
+                }))).into_response();
+            }
+        }
+        None => {
+            tracing::warn!(
+                "write_memory: passport {} not registered — accepting self-attested signature",
+                body.passport_id
+            );
+        }
+    }
+
     // Merge value + metadata into a single prost Struct.
     let mut data_map = match body.value.clone() {
         serde_json::Value::Object(m) => m,
@@ -571,7 +653,7 @@ async fn write_memory(
     if let Some(bid) = walrus_blob_id {
         resp["walrus_blob_id"] = serde_json::Value::String(bid);
     }
-    (StatusCode::CREATED, Json(resp)).into_response()
+    (StatusCode::OK, Json(resp)).into_response()
 }
 
 async fn get_conflicts(
@@ -1203,4 +1285,142 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/handoff",                             axum::routing::post(handoff))
         .layer(CorsLayer::permissive())
         .with_state(state)
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod auth_tests {
+    use super::*;
+    use crate::state::AppStateConfig;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode as Sc};
+    use ed25519_dalek::{Signer, SigningKey};
+    use http_body_util::BodyExt as _;
+    use tower::ServiceExt; // for `oneshot`
+
+    fn test_state() -> Arc<AppState> {
+        Arc::new(
+            AppState::new(AppStateConfig {
+                sui_rpc_url: None,
+                policy_object_id: None,
+                record_object_id: None,
+                walrus_publisher_url: None,
+                walrus_aggregator_url: None,
+            })
+            .expect("AppState::new"),
+        )
+    }
+
+    fn make_body(value: serde_json::Value) -> Body {
+        Body::from(serde_json::to_vec(&value).unwrap())
+    }
+
+    async fn body_string(resp: axum::response::Response) -> (Sc, String) {
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let s = String::from_utf8_lossy(&bytes).to_string();
+        (status, s)
+    }
+
+    fn canonical_msg(ws: &str, entity: &str, event: &str, agent: &str) -> String {
+        format!("{}:{}:{}:{}", ws, entity, event, agent)
+    }
+
+    #[tokio::test]
+    async fn write_without_signature_is_rejected() {
+        let app = router(test_state());
+
+        let body = serde_json::json!({
+            "agent_id":    "agent-1",
+            "passport_id": "00".repeat(32),
+            "event":       "memory.write",
+            "value":       { "note": "hi" },
+            // signature + public_key intentionally missing → default ""
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/memory/ws-test/entity-1")
+            .header("content-type", "application/json")
+            .body(make_body(body))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        let (status, body_text) = body_string(resp).await;
+        assert_eq!(status, Sc::UNAUTHORIZED, "missing sig must 401, got: {body_text}");
+    }
+
+    #[tokio::test]
+    async fn write_with_wrong_key_is_rejected() {
+        let app = router(test_state());
+
+        // Sign with key A, declare key B → verify_strict must fail.
+        let key_a = SigningKey::from_bytes(&[1u8; 32]);
+        let key_b = SigningKey::from_bytes(&[2u8; 32]);
+        let agent = "agent-x";
+        let ws = "ws-test";
+        let entity = "entity-1";
+        let event = "memory.write";
+
+        let msg = canonical_msg(ws, entity, event, agent);
+        let sig = key_a.sign(msg.as_bytes());
+
+        let body = serde_json::json!({
+            "agent_id":    agent,
+            "passport_id": "00".repeat(32),
+            "event":       event,
+            "value":       { "note": "hi" },
+            "signature":   hex::encode(sig.to_bytes()),
+            "public_key":  hex::encode(key_b.verifying_key().to_bytes()),
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/memory/{}/{}", ws, entity))
+            .header("content-type", "application/json")
+            .body(make_body(body))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        let (status, body_text) = body_string(resp).await;
+        assert_eq!(status, Sc::UNAUTHORIZED, "wrong key must 401, got: {body_text}");
+    }
+
+    #[tokio::test]
+    async fn write_with_valid_signature_passes_auth() {
+        // Walrus is unconfigured in this state, so the handler will return 500
+        // ("Walrus backend not configured") AFTER auth passes. The point is:
+        // we do not see 401 — auth succeeded. The end-to-end 200 path is
+        // covered by the live curl probe in the Fix 1 gate (which configures
+        // Walrus). This unit test proves the auth gate itself works.
+        let app = router(test_state());
+
+        let key = SigningKey::from_bytes(&[7u8; 32]);
+        let agent = "agent-x";
+        let ws = "ws-test";
+        let entity = "entity-1";
+        let event = "memory.write";
+        let msg = canonical_msg(ws, entity, event, agent);
+        let sig = key.sign(msg.as_bytes());
+
+        let body = serde_json::json!({
+            "agent_id":    agent,
+            "passport_id": "00".repeat(32),
+            "event":       event,
+            "value":       { "note": "hi" },
+            "signature":   hex::encode(sig.to_bytes()),
+            "public_key":  hex::encode(key.verifying_key().to_bytes()),
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/memory/{}/{}", ws, entity))
+            .header("content-type", "application/json")
+            .body(make_body(body))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        let (status, body_text) = body_string(resp).await;
+        assert_ne!(status, Sc::UNAUTHORIZED, "valid sig must not 401, got 401 with body: {body_text}");
+        assert_ne!(status, Sc::BAD_REQUEST,  "valid sig must not 400, got 400 with body: {body_text}");
+    }
+
 }
