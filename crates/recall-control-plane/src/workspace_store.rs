@@ -1,15 +1,20 @@
+use recall_conflict::ConflictPolicy;
 use recall_proto::{common as common_proto, memory as mem_proto};
 use std::collections::HashMap;
 use std::sync::RwLock;
 
 pub struct WorkspaceStore {
     inner: RwLock<HashMap<String, mem_proto::Workspace>>,
+    /// Per-workspace conflict policy. Workspaces without an explicit entry
+    /// fall through to `ConflictPolicy::default()` at lookup time.
+    policies: RwLock<HashMap<String, ConflictPolicy>>,
 }
 
 impl Default for WorkspaceStore {
     fn default() -> Self {
         Self {
             inner: RwLock::new(HashMap::new()),
+            policies: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -57,5 +62,26 @@ impl WorkspaceStore {
             };
             self.inner.write().unwrap().insert(workspace_id.to_string(), ws);
         }
+    }
+
+    /// Set the conflict policy for a workspace. Overwrites any previous policy.
+    /// Pass `ConflictPolicy::default()` to restore the built-in 4-pair policy.
+    pub fn set_policy(&self, workspace_id: &str, policy: ConflictPolicy) {
+        self.policies
+            .write()
+            .unwrap()
+            .insert(workspace_id.to_string(), policy);
+    }
+
+    /// Look up the conflict policy for a workspace. Falls back to the default
+    /// policy when none has been configured. Returns an owned clone so callers
+    /// don't hold the lock while running detection.
+    pub fn get_policy(&self, workspace_id: &str) -> ConflictPolicy {
+        self.policies
+            .read()
+            .unwrap()
+            .get(workspace_id)
+            .cloned()
+            .unwrap_or_default()
     }
 }

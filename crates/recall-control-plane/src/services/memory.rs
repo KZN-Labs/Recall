@@ -192,7 +192,9 @@ impl MemoryService for MemoryServiceImpl {
         // Auto-register workspace so HTTP list reflects gRPC writes too.
         self.state.workspace_store.ensure_exists(&workspace_id.0);
 
-        // Detect conflicts against existing entries for the same entity.
+        // Detect conflicts against existing entries for the same entity, using
+        // the per-workspace policy (default policy if unset).
+        let policy = self.state.workspace_store.get_policy(&workspace_id.0);
         let existing = self
             .state
             .memory_store
@@ -200,7 +202,7 @@ impl MemoryService for MemoryServiceImpl {
 
         for existing_entry in &existing {
             if existing_entry.id != entry.id
-                && recall_conflict::detect_conflict(existing_entry, &entry)
+                && recall_conflict::detect_conflict_with(existing_entry, &entry, &policy)
             {
                 let conflict_receipt_id = ContentHash(recall_crypto::sha256_hex(
                     format!("{}:{}", existing_entry.id, entry.id).as_bytes(),

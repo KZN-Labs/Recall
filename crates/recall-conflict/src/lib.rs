@@ -2,18 +2,107 @@ use recall_core::ids::ContentHash;
 use recall_proto::{common as common_proto, memory as mem_proto};
 use uuid::Uuid;
 
-/// Events that conflict when written by different agents about the same entity.
-const CONFLICTING_EVENT_PAIRS: &[(&str, &str)] = &[
-    ("credit_approved", "flag_suspicious"),
-    ("credit_offered", "flag_suspicious"),
+/// Built-in default pairs. RECALL ships with these so first-time workspaces
+/// detect the obvious cross-agent conflicts out of the box. Workspaces can
+/// extend or replace this set at creation time via [`ConflictPolicy`].
+///
+/// Note: this is a **policy**, not a general semantic engine. RECALL does not
+/// reason about event meaning — it matches event-name pairs you opt into.
+pub const DEFAULT_CONFLICT_PAIRS: &[(&str, &str)] = &[
+    ("credit_approved",  "flag_suspicious"),
+    ("credit_offered",   "flag_suspicious"),
     ("account_verified", "flag_suspicious"),
-    ("refund_approved", "refund_denied"),
+    ("refund_approved",  "refund_denied"),
 ];
 
-/// Check whether two new memory entries conflict.
+/// Configurable conflict policy owned by a workspace.
+///
+/// Two memory entries from different agents about the same entity conflict
+/// iff their `(event_a, event_b)` pair (in either order) appears in `pairs`.
+///
+/// Workspaces start with `ConflictPolicy::default()` (the 4 built-in pairs).
+/// Add pairs with [`ConflictPolicy::with_pair`] or replace the whole set with
+/// [`ConflictPolicy::with_pairs`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConflictPolicy {
+    pairs: Vec<(String, String)>,
+}
+
+impl Default for ConflictPolicy {
+    fn default() -> Self {
+        Self {
+            pairs: DEFAULT_CONFLICT_PAIRS
+                .iter()
+                .map(|(a, b)| (a.to_string(), b.to_string()))
+                .collect(),
+        }
+    }
+}
+
+impl ConflictPolicy {
+    /// Empty policy — no events ever conflict. Useful in tests and when a
+    /// workspace wants to opt out of conflict detection entirely.
+    pub fn empty() -> Self {
+        Self { pairs: Vec::new() }
+    }
+
+    /// Build a policy from a list of event-name pairs. Order within a pair is
+    /// not significant — conflicts fire for either ordering.
+    pub fn with_pairs<I, A, B>(pairs: I) -> Self
+    where
+        I: IntoIterator<Item = (A, B)>,
+        A: Into<String>,
+        B: Into<String>,
+    {
+        Self {
+            pairs: pairs.into_iter().map(|(a, b)| (a.into(), b.into())).collect(),
+        }
+    }
+
+    /// Add one pair to an existing policy. Builder-style — returns self.
+    pub fn with_pair<A: Into<String>, B: Into<String>>(mut self, a: A, b: B) -> Self {
+        self.pairs.push((a.into(), b.into()));
+        self
+    }
+
+    /// True iff two event names (in either order) appear together in any
+    /// policy pair.
+    pub fn matches(&self, event_a: &str, event_b: &str) -> bool {
+        self.pairs.iter().any(|(pa, pb)| {
+            (event_a == pa && event_b == pb) || (event_a == pb && event_b == pa)
+        })
+    }
+
+    /// Number of configured pairs. Mostly useful for diagnostics and tests.
+    pub fn len(&self) -> usize {
+        self.pairs.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.pairs.is_empty()
+    }
+}
+
+/// Check whether two new memory entries conflict, using the **default**
+/// conflict policy. Provided for back-compat and quick checks; prefer
+/// [`detect_conflict_with`] when a workspace has a customized policy.
 pub fn detect_conflict(
     a: &mem_proto::MemoryEntry,
     b: &mem_proto::MemoryEntry,
+) -> bool {
+    detect_conflict_with(a, b, &ConflictPolicy::default())
+}
+
+/// Check whether two new memory entries conflict under the given policy.
+///
+/// Two entries conflict iff:
+///   - they are about the same entity in the same workspace,
+///   - they were written by different agents, AND
+///   - their event-name pair is configured in `policy`.
+pub fn detect_conflict_with(
+    a: &mem_proto::MemoryEntry,
+    b: &mem_proto::MemoryEntry,
+    policy: &ConflictPolicy,
 ) -> bool {
     if a.entity != b.entity || a.workspace_id != b.workspace_id {
         return false;
@@ -21,15 +110,7 @@ pub fn detect_conflict(
     if a.agent_id == b.agent_id {
         return false; // same agent updating its own memory is not a conflict
     }
-
-    for (event_a, event_b) in CONFLICTING_EVENT_PAIRS {
-        if (a.event == *event_a && b.event == *event_b)
-            || (a.event == *event_b && b.event == *event_a)
-        {
-            return true;
-        }
-    }
-    false
+    policy.matches(&a.event, &b.event)
 }
 
 /// Trust-ranked auto-resolution: prefer the signal from the higher-trust agent.
@@ -168,5 +249,37 @@ mod tests {
         let a = make_entry("credit_approved", 2, "support-agent");
         let b = make_entry("flag_suspicious", 3, "fraud-agent");
         assert_eq!(auto_resolve(&a, &b), "SIGNAL_B_PREFERRED");
+    }
+
+    #[test]
+    fn default_policy_has_four_pairs() {
+        assert_eq!(ConflictPolicy::default().len(), DEFAULT_CONFLICT_PAIRS.len());
+    }
+
+    #[test]
+    fn custom_pair_fires_with_explicit_policy() {
+        // A pair the default policy knows nothing about.
+        let policy = ConflictPolicy::empty()
+            .with_pair("shipment_delivered", "package_lost");
+
+        let a = make_entry("shipment_delivered", 2, "fulfillment-agent");
+        let b = make_entry("package_lost",       3, "support-agent");
+
+        assert!(!detect_conflict(&a, &b),
+            "the default policy must NOT fire on a custom pair");
+        assert!(detect_conflict_with(&a, &b, &policy),
+            "a workspace policy containing the pair MUST fire (in either order)");
+
+        // Reversed order must also fire.
+        let a2 = make_entry("package_lost",       3, "support-agent");
+        let b2 = make_entry("shipment_delivered", 2, "fulfillment-agent");
+        assert!(detect_conflict_with(&a2, &b2, &policy));
+    }
+
+    #[test]
+    fn empty_policy_never_conflicts() {
+        let a = make_entry("credit_approved", 2, "support-agent");
+        let b = make_entry("flag_suspicious", 3, "fraud-agent");
+        assert!(!detect_conflict_with(&a, &b, &ConflictPolicy::empty()));
     }
 }

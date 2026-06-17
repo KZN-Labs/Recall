@@ -732,11 +732,12 @@ async fn write_memory(
     // Auto-register workspace so list_workspaces reflects writes before create() is called.
     state.workspace_store.ensure_exists(&workspace_id);
 
-    // Conflict detection.
+    // Conflict detection — uses the per-workspace policy (default if unset).
+    let policy = state.workspace_store.get_policy(&workspace_id);
     let existing = state.memory_store.get_by_entity(&workspace_id, &entity);
     for existing_entry in &existing {
         if existing_entry.id != entry.id
-            && recall_conflict::detect_conflict(existing_entry, &entry)
+            && recall_conflict::detect_conflict_with(existing_entry, &entry, &policy)
         {
             let conflict_receipt_id = ContentHash(recall_crypto::sha256_hex(
                 format!("{}:{}", existing_entry.id, entry.id).as_bytes(),
@@ -1391,8 +1392,51 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/registry",                            get(list_registry).post(publish_registry))
         .route("/registry/:name/:version/import",      axum::routing::post(import_registry))
         .route("/handoff",                             axum::routing::post(handoff))
+        .route("/workspace/:workspace_id/conflict-policy",
+               get(get_conflict_policy).put(set_conflict_policy))
         .layer(CorsLayer::permissive())
         .with_state(state)
+}
+
+#[derive(Deserialize)]
+struct ConflictPolicyBody {
+    /// List of `[event_a, event_b]` pairs that should be treated as conflicting
+    /// for this workspace. Order within a pair does not matter. An empty list
+    /// disables conflict detection for the workspace.
+    pairs: Vec<(String, String)>,
+}
+
+async fn set_conflict_policy(
+    State(state): State<Arc<AppState>>,
+    Path(workspace_id): Path<String>,
+    Json(body): Json<ConflictPolicyBody>,
+) -> impl IntoResponse {
+    let policy = recall_conflict::ConflictPolicy::with_pairs(body.pairs);
+    state.workspace_store.ensure_exists(&workspace_id);
+    state.workspace_store.set_policy(&workspace_id, policy.clone());
+    tracing::info!(
+        "conflict policy updated for workspace {}: {} pairs",
+        workspace_id, policy.len()
+    );
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "workspace_id": workspace_id,
+            "pair_count":   policy.len(),
+        })),
+    )
+        .into_response()
+}
+
+async fn get_conflict_policy(
+    State(state): State<Arc<AppState>>,
+    Path(workspace_id): Path<String>,
+) -> Json<serde_json::Value> {
+    let policy = state.workspace_store.get_policy(&workspace_id);
+    Json(serde_json::json!({
+        "workspace_id": workspace_id,
+        "pair_count":   policy.len(),
+    }))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
