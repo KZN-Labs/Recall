@@ -116,81 +116,106 @@ impl SuiAnchorDriver {
     ) -> Result<String> {
         use base64::Engine;
         use ed25519_dalek::Signer;
+        use std::str::FromStr;
+        use sui_sdk_types::{
+            Address, Argument, Command, GasPayment, Identifier, Input, MoveCall,
+            ProgrammableTransaction, SharedInput, Transaction,
+            TransactionExpiration, TransactionKind,
+        };
 
-        // The Move contract converts merkle_root/walrus_blob_id/workspace_id
-        // via `string::utf8(...)`, so we must pass UTF-8 encoded hex strings,
-        // not raw hash bytes (which are invalid UTF-8).
-        let merkle_bytes = merkle_root.hex.as_bytes().to_vec();
-        let receipt_count = batch.receipt_ids.len() as u64;
+        // ── 1. Resolve sender, gas coin, gas price, shared object versions ───
+        //
+        // The convenience builder RPC used to do all of this for us. With a
+        // client-built PTB we fetch each piece explicitly.
+        let sender_addr = Address::from_str(sender)
+            .map_err(|e| anyhow!("invalid sender address {sender}: {e}"))?;
+        let package_addr = Address::from_str(package_id)
+            .map_err(|e| anyhow!("invalid package id {package_id}: {e}"))?;
+        let registry_addr = Address::from_str(registry_id)
+            .map_err(|e| anyhow!("invalid registry id {registry_id}: {e}"))?;
+        let clock_addr = Address::from_str(CLOCK_OBJECT_ID)
+            .map_err(|e| anyhow!("invalid clock id: {e}"))?;
 
-        // Actual on-chain ABI (from sui_getNormalizedMoveModulesByPackage):
-        //   commit_anchor(registry: &mut AnchorRegistry,
-        //                 merkle_root: vector<u8>,
-        //                 walrus_blob_id: vector<u8>,
-        //                 workspace_id: vector<u8>,
-        //                 receipt_count: u64,
-        //                 clock: &Clock,
-        //                 ctx: &mut TxContext)   ← injected, not passed
-        let args = serde_json::json!([
-            registry_id,                                   // &mut AnchorRegistry
-            format!("0x{}", hex::encode(&merkle_bytes)),   // vector<u8>
-            "0x",                                          // vector<u8> (empty)
-            format!("0x{}", hex::encode(b"recall")),       // vector<u8>
-            receipt_count.to_string(),                     // u64
-            CLOCK_OBJECT_ID                                // &Clock
-        ]);
+        let gas_coin = self.fetch_gas_coin(sender).await?;
+        let gas_price = self.fetch_reference_gas_price().await?;
+        let registry_version = self.fetch_shared_initial_version(registry_id).await?;
+        // The 0x6 Clock object has initial_shared_version = 1 on every Sui
+        // network (it is created in genesis). Avoid a needless RPC.
+        let clock_version = 1u64;
 
-        let build_payload = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "unsafe_moveCall",
-            "params": [
-                sender,
-                package_id,
-                "receipt_anchor",
-                "commit_anchor",
-                [],
-                args,
-                null,
-                GAS_BUDGET.to_string(),
-                "Commit"
-            ]
-        });
+        // ── 2. Build the ProgrammableTransaction ─────────────────────────────
+        //
+        // The Move contract decodes merkle_root / walrus_blob_id / workspace_id
+        // with `string::utf8(...)`, so we pass UTF-8 hex strings (not raw hash
+        // bytes — those are invalid UTF-8 and the contract aborts).
+        //
+        // Pure inputs are BCS-encoded scalars/vectors. bcs::to_bytes of a
+        // Vec<u8> emits a ULEB128 length prefix followed by the bytes, which
+        // is exactly what Sui expects for `vector<u8>` pure args.
+        let merkle_bytes_v: Vec<u8> = merkle_root.hex.as_bytes().to_vec();
+        let walrus_blob_v: Vec<u8>  = Vec::new();
+        let workspace_v:   Vec<u8>  = b"recall".to_vec();
+        let receipt_count: u64      = batch.receipt_ids.len() as u64;
 
-        let build_resp: serde_json::Value = self
-            .client
-            .post(&self.sui_rpc_url)
-            .json(&build_payload)
-            .send()
-            .await
-            .map_err(|e| anyhow!("build POST failed: {e}"))?
-            .json()
-            .await
-            .map_err(|e| anyhow!("build parse failed: {e}"))?;
+        let inputs = vec![
+            // Index 0 — &mut AnchorRegistry (shared, mutable)
+            Input::Shared(SharedInput::new(registry_addr, registry_version, true)),
+            // Index 1 — vector<u8> merkle_root
+            Input::Pure(bcs::to_bytes(&merkle_bytes_v)?),
+            // Index 2 — vector<u8> walrus_blob_id (empty)
+            Input::Pure(bcs::to_bytes(&walrus_blob_v)?),
+            // Index 3 — vector<u8> workspace_id
+            Input::Pure(bcs::to_bytes(&workspace_v)?),
+            // Index 4 — u64 receipt_count
+            Input::Pure(bcs::to_bytes(&receipt_count)?),
+            // Index 5 — &Clock (shared, immutable)
+            Input::Shared(SharedInput::new(clock_addr, clock_version, false)),
+        ];
 
-        if let Some(err) = build_resp.get("error") {
-            return Err(anyhow!("Sui RPC build error: {err}"));
-        }
+        let move_call = MoveCall {
+            package: package_addr,
+            module:  Identifier::new("receipt_anchor")
+                .map_err(|e| anyhow!("invalid module name: {e}"))?,
+            function: Identifier::new("commit_anchor")
+                .map_err(|e| anyhow!("invalid function name: {e}"))?,
+            type_arguments: vec![],
+            arguments: vec![
+                Argument::Input(0),
+                Argument::Input(1),
+                Argument::Input(2),
+                Argument::Input(3),
+                Argument::Input(4),
+                Argument::Input(5),
+            ],
+        };
 
-        let tx_bytes_b64 = build_resp["result"]["txBytes"]
-            .as_str()
-            .ok_or_else(|| anyhow!("no txBytes in build response: {build_resp}"))?;
+        let pt = ProgrammableTransaction {
+            inputs,
+            commands: vec![Command::MoveCall(move_call)],
+        };
 
-        let raw_tx = base64::engine::general_purpose::STANDARD
-            .decode(tx_bytes_b64)
-            .map_err(|e| anyhow!("base64 decode txBytes: {e}"))?;
+        // ── 3. Wrap in Transaction with gas + expiration ─────────────────────
+        let tx = Transaction {
+            kind: TransactionKind::ProgrammableTransaction(pt),
+            sender: sender_addr,
+            gas_payment: GasPayment {
+                objects: vec![gas_coin],
+                owner:   sender_addr,
+                price:   gas_price,
+                budget:  GAS_BUDGET,
+            },
+            expiration: TransactionExpiration::None,
+        };
 
-        // Intent: [TransactionData=0, AppId::Sui=0, Version=0] ++ tx bytes.
-        // Sui requires signing the BLAKE2b-256 digest of the intent message,
-        // not the raw intent message itself.
-        let mut intent_msg = vec![0u8, 0u8, 0u8];
-        intent_msg.extend_from_slice(&raw_tx);
+        // ── 4. BCS-serialize for submission, intent-hash for signing ─────────
+        let tx_bytes = bcs::to_bytes(&tx)
+            .map_err(|e| anyhow!("BCS encode transaction: {e}"))?;
+        let tx_bytes_b64 = base64::engine::general_purpose::STANDARD.encode(&tx_bytes);
 
-        use blake2::digest::consts::U32;
-        use blake2::{Blake2b, Digest};
-        let mut hasher = Blake2b::<U32>::new();
-        hasher.update(&intent_msg);
-        let intent_digest: [u8; 32] = hasher.finalize().into();
+        // signing_digest() handles the intent prefix (TransactionData/V0/Sui) +
+        // BCS-encode + BLAKE2b-256 hash, replacing our hand-rolled
+        // 3-byte-prefix + manual hashing path used in the convenience-RPC flow.
+        let intent_digest = tx.signing_digest();
 
         let sig = signing_key.sign(&intent_digest);
         let pub_bytes = signing_key.verifying_key().to_bytes();
@@ -233,6 +258,121 @@ impl SuiAnchorDriver {
             .as_str()
             .map(|s| s.to_string())
             .ok_or_else(|| anyhow!("no digest in exec response: {exec_resp}"))
+    }
+
+    // ── PTB build helpers ─────────────────────────────────────────────────────
+
+    /// Pick the first owned SUI coin object for the sender, returned as an
+    /// ObjectReference suitable for use in GasPayment.
+    async fn fetch_gas_coin(&self, sender: &str)
+        -> Result<sui_sdk_types::ObjectReference>
+    {
+        use std::str::FromStr;
+        let payload = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 10,
+            "method": "suix_getCoins",
+            "params": [sender, "0x2::sui::SUI", null, 1]
+        });
+        let resp: serde_json::Value = self
+            .client
+            .post(&self.sui_rpc_url)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| anyhow!("getCoins POST: {e}"))?
+            .json()
+            .await
+            .map_err(|e| anyhow!("getCoins parse: {e}"))?;
+        if let Some(err) = resp.get("error") {
+            return Err(anyhow!("suix_getCoins error: {err}"));
+        }
+        let coin = resp["result"]["data"]
+            .as_array()
+            .and_then(|a| a.first())
+            .ok_or_else(|| anyhow!("no SUI coins owned by {sender}"))?;
+        let obj_id = coin["coinObjectId"].as_str()
+            .ok_or_else(|| anyhow!("coin missing coinObjectId: {coin}"))?;
+        let version_s = coin["version"].as_str()
+            .ok_or_else(|| anyhow!("coin missing version: {coin}"))?;
+        let digest_s = coin["digest"].as_str()
+            .ok_or_else(|| anyhow!("coin missing digest: {coin}"))?;
+        let version: u64 = version_s.parse()
+            .map_err(|e| anyhow!("parse coin version {version_s}: {e}"))?;
+        Ok(sui_sdk_types::ObjectReference::new(
+            sui_sdk_types::Address::from_str(obj_id)
+                .map_err(|e| anyhow!("parse coin address {obj_id}: {e}"))?,
+            version,
+            sui_sdk_types::Digest::from_str(digest_s)
+                .map_err(|e| anyhow!("parse coin digest {digest_s}: {e}"))?,
+        ))
+    }
+
+    /// Network's reference gas price (RGP). PTB gas_price must be ≥ this.
+    async fn fetch_reference_gas_price(&self) -> Result<u64> {
+        let payload = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "suix_getReferenceGasPrice",
+            "params": []
+        });
+        let resp: serde_json::Value = self
+            .client
+            .post(&self.sui_rpc_url)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| anyhow!("getReferenceGasPrice POST: {e}"))?
+            .json()
+            .await
+            .map_err(|e| anyhow!("getReferenceGasPrice parse: {e}"))?;
+        if let Some(err) = resp.get("error") {
+            return Err(anyhow!("suix_getReferenceGasPrice error: {err}"));
+        }
+        // RPC returns the price as a JSON string (decimal).
+        let s = resp["result"].as_str()
+            .ok_or_else(|| anyhow!("no gas price in response: {resp}"))?;
+        s.parse::<u64>()
+            .map_err(|e| anyhow!("parse RGP {s}: {e}"))
+    }
+
+    /// initial_shared_version for a shared object. Required by the BCS
+    /// encoding of every Shared input — the fullnode rejects the tx if it
+    /// disagrees with the network.
+    async fn fetch_shared_initial_version(&self, object_id: &str) -> Result<u64> {
+        let payload = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 12,
+            "method": "sui_getObject",
+            "params": [object_id, { "showOwner": true }]
+        });
+        let resp: serde_json::Value = self
+            .client
+            .post(&self.sui_rpc_url)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| anyhow!("getObject POST: {e}"))?
+            .json()
+            .await
+            .map_err(|e| anyhow!("getObject parse: {e}"))?;
+        if let Some(err) = resp.get("error") {
+            return Err(anyhow!("sui_getObject error: {err}"));
+        }
+        // Owner shape: { "Shared": { "initial_shared_version": <u64-or-string> } }
+        // Sui RPC may return this as either a JSON number (testnet/mainnet) or
+        // a decimal string (older nodes / some explorers). Handle both.
+        let raw = &resp["result"]["data"]["owner"]["Shared"]["initial_shared_version"];
+        if let Some(n) = raw.as_u64() {
+            return Ok(n);
+        }
+        if let Some(s) = raw.as_str() {
+            return s.parse::<u64>()
+                .map_err(|e| anyhow!("parse initial_shared_version {s}: {e}"));
+        }
+        Err(anyhow!(
+            "object {object_id} is not a shared object or response missing initial_shared_version: {resp}"
+        ))
     }
 }
 
