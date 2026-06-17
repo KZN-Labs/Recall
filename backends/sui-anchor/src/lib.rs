@@ -3,9 +3,32 @@ use recall_proto::receipt as receipt_proto;
 use std::env;
 use tracing::{info, warn};
 
-const SUI_TESTNET_RPC: &str = "https://fullnode.testnet.sui.io:443";
-const CLOCK_OBJECT_ID: &str = "0x6";
-const GAS_BUDGET: &str = "100000000";
+const CLOCK_OBJECT_ID: &str =
+    "0x0000000000000000000000000000000000000000000000000000000000000006";
+const GAS_BUDGET: u64 = 10_000_000; // 0.01 SUI (actual anchor cost ~0.003 SUI)
+
+/// Resolve the Sui RPC endpoint. `SUI_NETWORK` selects testnet (default),
+/// mainnet, or devnet. `RECALL_SUI_RPC_URL` overrides if set.
+fn get_sui_rpc_url() -> String {
+    if let Ok(url) = env::var("RECALL_SUI_RPC_URL") {
+        if !url.is_empty() {
+            return url;
+        }
+    }
+    let network = env::var("SUI_NETWORK").unwrap_or_else(|_| "testnet".to_string());
+    match network.as_str() {
+        "mainnet" => "https://fullnode.mainnet.sui.io:443".to_string(),
+        "devnet"  => "https://fullnode.devnet.sui.io:443".to_string(),
+        _         => "https://fullnode.testnet.sui.io:443".to_string(),
+    }
+}
+
+fn build_rpc_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_default()
+}
 
 pub struct SuiAnchorDriver {
     sui_rpc_url: String,
@@ -16,19 +39,15 @@ impl SuiAnchorDriver {
     pub fn new(sui_rpc_url: &str, _package_id: &str, _sender_address: &str) -> Self {
         Self {
             sui_rpc_url: sui_rpc_url.to_string(),
-            client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
-                .build()
-                .unwrap(),
+            client: build_rpc_client(),
         }
     }
 
     pub fn testnet() -> Self {
-        Self::new(SUI_TESTNET_RPC, "", "")
+        Self::new(&get_sui_rpc_url(), "", "")
     }
 
     /// Anchor a receipt batch to Sui. Returns the Sui transaction digest.
-    /// Falls back to a synthetic digest if env vars are not configured.
     pub async fn anchor_batch(&self, batch: &receipt_proto::ReceiptBatch) -> Result<String> {
         let merkle_root = batch
             .merkle_root
@@ -42,7 +61,6 @@ impl SuiAnchorDriver {
                 return Ok(fake_digest(&merkle_root.hex));
             }
         };
-
         let package_id = match env::var("RECALL_RECEIPT_ANCHOR_PACKAGE_ID") {
             Ok(id) if !id.is_empty() => id,
             _ => {
@@ -50,7 +68,6 @@ impl SuiAnchorDriver {
                 return Ok(fake_digest(&merkle_root.hex));
             }
         };
-
         let registry_id = match env::var("RECALL_ANCHOR_REGISTRY_ID") {
             Ok(id) if !id.is_empty() => id,
             _ => {
@@ -58,7 +75,6 @@ impl SuiAnchorDriver {
                 return Ok(fake_digest(&merkle_root.hex));
             }
         };
-
         let signing_key = match parse_private_key(&private_key_str) {
             Ok(k) => k,
             Err(e) => {
@@ -70,7 +86,7 @@ impl SuiAnchorDriver {
         let sender = sui_address_from_ed25519(&signing_key.verifying_key().to_bytes());
 
         match self
-            .submit_ptb(&sender, &signing_key, &package_id, &registry_id, merkle_root, batch)
+            .submit_anchor(&sender, &signing_key, &package_id, &registry_id, merkle_root, batch)
             .await
         {
             Ok(digest) => {
@@ -84,7 +100,7 @@ impl SuiAnchorDriver {
         }
     }
 
-    async fn submit_ptb(
+    async fn submit_anchor(
         &self,
         sender: &str,
         signing_key: &ed25519_dalek::SigningKey,
@@ -96,21 +112,27 @@ impl SuiAnchorDriver {
         use base64::Engine;
         use ed25519_dalek::Signer;
 
-        let merkle_bytes = hex::decode(&merkle_root.hex)
-            .unwrap_or_else(|_| merkle_root.hex.as_bytes().to_vec());
-
+        // The Move contract converts merkle_root/walrus_blob_id/workspace_id
+        // via `string::utf8(...)`, so we must pass UTF-8 encoded hex strings,
+        // not raw hash bytes (which are invalid UTF-8).
+        let merkle_bytes = merkle_root.hex.as_bytes().to_vec();
         let receipt_count = batch.receipt_ids.len() as u64;
 
-        // commit_anchor(merkle_root: vector<u8>, walrus_blob_id: vector<u8>,
-        //               workspace_id: vector<u8>, receipt_count: u64,
-        //               registry: &mut AnchorRegistry, clock: &Clock)
+        // Actual on-chain ABI (from sui_getNormalizedMoveModulesByPackage):
+        //   commit_anchor(registry: &mut AnchorRegistry,
+        //                 merkle_root: vector<u8>,
+        //                 walrus_blob_id: vector<u8>,
+        //                 workspace_id: vector<u8>,
+        //                 receipt_count: u64,
+        //                 clock: &Clock,
+        //                 ctx: &mut TxContext)   ← injected, not passed
         let args = serde_json::json!([
-            bcs_bytes_arg(&merkle_bytes),
-            bcs_bytes_arg(&[]),           // walrus_blob_id (not in ReceiptBatch proto)
-            bcs_bytes_arg(b"recall"),     // workspace_id
-            bcs_u64_arg(receipt_count),
-            registry_id,
-            CLOCK_OBJECT_ID
+            registry_id,                                   // &mut AnchorRegistry
+            format!("0x{}", hex::encode(&merkle_bytes)),   // vector<u8>
+            "0x",                                          // vector<u8> (empty)
+            format!("0x{}", hex::encode(b"recall")),       // vector<u8>
+            receipt_count.to_string(),                     // u64
+            CLOCK_OBJECT_ID                                // &Clock
         ]);
 
         let build_payload = serde_json::json!({
@@ -125,8 +147,8 @@ impl SuiAnchorDriver {
                 [],
                 args,
                 null,
-                GAS_BUDGET,
-                "WaitForLocalExecution"
+                GAS_BUDGET.to_string(),
+                "Commit"
             ]
         });
 
@@ -136,10 +158,10 @@ impl SuiAnchorDriver {
             .json(&build_payload)
             .send()
             .await
-            .map_err(|e| anyhow!("Sui RPC POST failed: {e}"))?
+            .map_err(|e| anyhow!("build POST failed: {e}"))?
             .json()
             .await
-            .map_err(|e| anyhow!("Sui RPC parse failed: {e}"))?;
+            .map_err(|e| anyhow!("build parse failed: {e}"))?;
 
         if let Some(err) = build_resp.get("error") {
             return Err(anyhow!("Sui RPC build error: {err}"));
@@ -153,11 +175,19 @@ impl SuiAnchorDriver {
             .decode(tx_bytes_b64)
             .map_err(|e| anyhow!("base64 decode txBytes: {e}"))?;
 
-        // Intent bytes: [TransactionData=0, AppId::Sui=0, Version=0] ++ tx bytes
+        // Intent: [TransactionData=0, AppId::Sui=0, Version=0] ++ tx bytes.
+        // Sui requires signing the BLAKE2b-256 digest of the intent message,
+        // not the raw intent message itself.
         let mut intent_msg = vec![0u8, 0u8, 0u8];
         intent_msg.extend_from_slice(&raw_tx);
 
-        let sig = signing_key.sign(&intent_msg);
+        use blake2::digest::consts::U32;
+        use blake2::{Blake2b, Digest};
+        let mut hasher = Blake2b::<U32>::new();
+        hasher.update(&intent_msg);
+        let intent_digest: [u8; 32] = hasher.finalize().into();
+
+        let sig = signing_key.sign(&intent_digest);
         let pub_bytes = signing_key.verifying_key().to_bytes();
 
         // Sui compact signature: flag(0x00=Ed25519) ++ sig(64) ++ pubkey(32)
@@ -201,39 +231,6 @@ impl SuiAnchorDriver {
     }
 }
 
-// ── BCS helpers ───────────────────────────────────────────────────────────────
-
-fn bcs_bytes_arg(data: &[u8]) -> serde_json::Value {
-    use base64::Engine;
-    serde_json::Value::String(
-        base64::engine::general_purpose::STANDARD.encode(bcs_encode_bytes(data)),
-    )
-}
-
-fn bcs_u64_arg(v: u64) -> serde_json::Value {
-    use base64::Engine;
-    serde_json::Value::String(
-        base64::engine::general_purpose::STANDARD.encode(v.to_le_bytes()),
-    )
-}
-
-fn bcs_encode_bytes(data: &[u8]) -> Vec<u8> {
-    let mut out = Vec::new();
-    let mut len = data.len();
-    loop {
-        let byte = (len & 0x7F) as u8;
-        len >>= 7;
-        if len > 0 {
-            out.push(byte | 0x80);
-        } else {
-            out.push(byte);
-            break;
-        }
-    }
-    out.extend_from_slice(data);
-    out
-}
-
 // ── Key parsing ───────────────────────────────────────────────────────────────
 
 fn parse_private_key(key_str: &str) -> Result<ed25519_dalek::SigningKey> {
@@ -259,27 +256,20 @@ fn parse_bech32_key(key_str: &str) -> Result<ed25519_dalek::SigningKey> {
     if bytes.len() < 33 {
         return Err(anyhow!("bech32 key payload too short: {} bytes", bytes.len()));
     }
-    // First byte is the scheme flag (0x00 = Ed25519)
     ed25519_dalek::SigningKey::try_from(&bytes[1..33])
         .map_err(|e| anyhow!("invalid Ed25519 key from bech32: {e}"))
 }
 
 fn sui_address_from_ed25519(pub_key: &[u8]) -> String {
-    // Env var override takes priority — always use this for funded wallets
     if let Ok(addr) = env::var("RECALL_SUI_SENDER_ADDRESS") {
         if !addr.is_empty() {
             return addr;
         }
     }
-
-    // Correct Sui address derivation:
-    //   Blake2b-256( scheme_flag || public_key_bytes )
-    // scheme_flag = 0x00 for Ed25519
     use blake2::digest::consts::U32;
     use blake2::{Blake2b, Digest};
-
     let mut hasher = Blake2b::<U32>::new();
-    hasher.update([0x00u8]); // Ed25519 scheme flag
+    hasher.update([0x00u8]);
     hasher.update(pub_key);
     format!("0x{}", hex::encode(hasher.finalize()))
 }
